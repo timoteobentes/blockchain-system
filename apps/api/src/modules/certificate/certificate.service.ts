@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as PDFDocument from 'pdfkit';
+import PDFDocument = require('pdfkit');
 import * as QRCode from 'qrcode';
 import * as path from 'path';
 import * as fs from 'fs';
