@@ -1,0 +1,170 @@
+[
+  { "inputs": [], "stateMutability": "nonpayable", "type": "constructor" },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "string", "name": "lotId", "type": "string" },
+      { "indexed": true, "internalType": "address", "name": "from", "type": "address" },
+      { "indexed": true, "internalType": "address", "name": "to", "type": "address" }
+    ],
+    "name": "OwnershipTransferred",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "address", "name": "producerAddress", "type": "address" }
+    ],
+    "name": "ProducerCreated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "string", "name": "lotId", "type": "string" },
+      { "indexed": true, "internalType": "address", "name": "producer", "type": "address" },
+      { "indexed": false, "internalType": "bytes32", "name": "documentHash", "type": "bytes32" }
+    ],
+    "name": "ProductAdded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "bytes32", "name": "userHash", "type": "bytes32" },
+      { "indexed": false, "internalType": "address", "name": "userAddress", "type": "address" }
+    ],
+    "name": "UserRegistered",
+    "type": "event"
+  },
+  {
+    "inputs": [
+      { "internalType": "string", "name": "_lotId", "type": "string" },
+      { "internalType": "uint256", "name": "_volume", "type": "uint256" },
+      { "internalType": "string", "name": "_origin", "type": "string" },
+      { "internalType": "bytes32", "name": "_docHash", "type": "bytes32" }
+    ],
+    "name": "addProduct",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "string", "name": "_lotId", "type": "string" }],
+    "name": "deactivateProduct",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "string", "name": "_lotId", "type": "string" }],
+    "name": "getProduct",
+    "outputs": [
+      { "internalType": "string", "name": "lotId", "type": "string" },
+      { "internalType": "uint256", "name": "volume", "type": "uint256" },
+      { "internalType": "string", "name": "origin", "type": "string" },
+      { "internalType": "address", "name": "producer", "type": "address" },
+      { "internalType": "address", "name": "currentOwner", "type": "address" },
+      { "internalType": "bytes32", "name": "documentHash", "type": "bytes32" },
+      { "internalType": "uint256", "name": "createdAt", "type": "uint256" },
+      { "internalType": "bool", "name": "active", "type": "bool" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "string", "name": "_lotId", "type": "string" }],
+    "name": "getProductHistory",
+    "outputs": [
+      { "internalType": "address[]", "name": "actors", "type": "address[]" },
+      { "internalType": "string[]", "name": "actions", "type": "string[]" },
+      { "internalType": "bytes32[]", "name": "docHashes", "type": "bytes32[]" },
+      { "internalType": "address[]", "name": "froms", "type": "address[]" },
+      { "internalType": "address[]", "name": "tos", "type": "address[]" },
+      { "internalType": "uint256[]", "name": "timestamps", "type": "uint256[]" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "bytes32", "name": "_userHash", "type": "bytes32" }],
+    "name": "getUser",
+    "outputs": [
+      { "internalType": "string", "name": "name", "type": "string" },
+      { "internalType": "string", "name": "cpf", "type": "string" },
+      { "internalType": "address", "name": "account", "type": "address" },
+      { "internalType": "uint256", "name": "createdAt", "type": "uint256" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "name": "isProducer",
+    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "address", "name": "_addr", "type": "address" }],
+    "name": "isUserRegistered",
+    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "listAllLotIds",
+    "outputs": [{ "internalType": "string[]", "name": "", "type": "string[]" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "listAllUsers",
+    "outputs": [{ "internalType": "bytes32[]", "name": "", "type": "bytes32[]" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "address", "name": "_userAddress", "type": "address" }],
+    "name": "makeProducer",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "string", "name": "_name", "type": "string" },
+      { "internalType": "string", "name": "_cpf", "type": "string" }
+    ],
+    "name": "registerUser",
+    "outputs": [{ "internalType": "bytes32", "name": "", "type": "bytes32" }],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "string", "name": "_lotId", "type": "string" },
+      { "internalType": "address", "name": "_newOwner", "type": "address" }
+    ],
+    "name": "transferProduct",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "address", "name": "_addr", "type": "address" }],
+    "name": "userHashOf",
+    "outputs": [{ "internalType": "bytes32", "name": "", "type": "bytes32" }],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

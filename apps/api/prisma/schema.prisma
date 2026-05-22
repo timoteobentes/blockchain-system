@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  userHash      String   @unique
+  name          String
+  cpf           String
+  walletAddress String   @unique
+  isProducer    Boolean  @default(false)
+  onChainAt     DateTime
+  syncedAt      DateTime @default(now()) @updatedAt
+
+  @@index([walletAddress])
+}
+
+model Product {
+  id                  String   @id @default(cuid())
+  lotId               String   @unique
+  volume              Int
+  origin              String
+  producerAddress     String
+  currentOwnerAddress String
+  documentHash        String
+  active              Boolean  @default(true)
+  onChainAt           DateTime
+  syncedAt            DateTime @default(now()) @updatedAt
+  traces              Trace[]
+
+  @@index([producerAddress])
+  @@index([currentOwnerAddress])
+  @@index([active])
+}
+
+model Trace {
+  id             String   @id
+  product        Product  @relation(fields: [productId], references: [id])
+  productId      String
+  actor          String
+  action         String
+  docHash        String
+  fromAddress    String
+  toAddress      String
+  blockTimestamp DateTime
+  txHash         String?
+  blockNumber    BigInt?
+  createdAt      DateTime @default(now())
+
+  @@index([productId])
+}
+
+model SyncState {
+  id        Int    @id @default(1)
+  lastBlock BigInt @default(0)
+}
