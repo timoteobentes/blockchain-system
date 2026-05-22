@@ -2,13 +2,13 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Package, ArrowRightLeft, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Package, ArrowRightLeft, CheckCircle, XCircle, AlertCircle, Download, Clock } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAccount } from 'wagmi';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { api } from '@/lib/api';
+import { api, downloadCertificate } from '@/lib/api';
 import { shortenAddress, formatDate, formatVolume } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -25,6 +25,7 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [certLoading, setCertLoading] = useState(false);
 
   useEffect(() => {
     if (!lotId) return;
@@ -58,14 +59,33 @@ export default function ProductDetailPage() {
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-white font-mono">{product.lotId}</h1>
             <Badge variant={product.active ? 'default' : 'secondary'}>{product.active ? 'Ativo' : 'Inativo'}</Badge>
+            {product.syncStatus === 'PENDING' && (
+              <Badge variant="secondary" className="text-yellow-400 border-yellow-400/20 bg-yellow-400/10">
+                <Clock className="h-3 w-3 mr-1" />Pendente blockchain
+              </Badge>
+            )}
           </div>
           <p className="text-white/50 text-sm mt-0.5">{product.origin}</p>
         </div>
-        {isOwner && product.active && (
-          <Button asChild variant="outline">
-            <Link href={`/products/${lotId}/transfer`}><ArrowRightLeft className="h-4 w-4" /> Transferir</Link>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            loading={certLoading}
+            onClick={async () => {
+              setCertLoading(true);
+              try { await downloadCertificate(lotId as string); }
+              finally { setCertLoading(false); }
+            }}
+          >
+            <Download className="h-4 w-4" /> Certificado
           </Button>
-        )}
+          {isOwner && product.active && (
+            <Button asChild variant="outline">
+              <Link href={`/products/${lotId}/transfer`}><ArrowRightLeft className="h-4 w-4" /> Transferir</Link>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Info card */}

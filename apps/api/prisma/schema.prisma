@@ -8,35 +8,46 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+enum SyncStatus {
+  PENDING
+  SYNCED
+  FAILED
+}
+
 model User {
-  id            String   @id @default(cuid())
-  userHash      String   @unique
+  id            String     @id @default(cuid())
+  userHash      String     @unique
   name          String
   cpf           String
-  walletAddress String   @unique
-  isProducer    Boolean  @default(false)
+  walletAddress String     @unique
+  isProducer    Boolean    @default(false)
+  isAdmin       Boolean    @default(false)
+  syncStatus    SyncStatus @default(SYNCED)
   onChainAt     DateTime
-  syncedAt      DateTime @default(now()) @updatedAt
+  syncedAt      DateTime   @default(now()) @updatedAt
 
   @@index([walletAddress])
+  @@index([syncStatus])
 }
 
 model Product {
-  id                  String   @id @default(cuid())
-  lotId               String   @unique
+  id                  String     @id @default(cuid())
+  lotId               String     @unique
   volume              Int
   origin              String
   producerAddress     String
   currentOwnerAddress String
   documentHash        String
-  active              Boolean  @default(true)
+  active              Boolean    @default(true)
+  syncStatus          SyncStatus @default(SYNCED)
   onChainAt           DateTime
-  syncedAt            DateTime @default(now()) @updatedAt
+  syncedAt            DateTime   @default(now()) @updatedAt
   traces              Trace[]
 
   @@index([producerAddress])
   @@index([currentOwnerAddress])
   @@index([active])
+  @@index([syncStatus])
 }
 
 model Trace {
@@ -59,4 +70,20 @@ model Trace {
 model SyncState {
   id        Int    @id @default(1)
   lastBlock BigInt @default(0)
+}
+
+model PendingOperation {
+  id          String     @id @default(cuid())
+  type        String     // REGISTER_USER | ADD_PRODUCT | TRANSFER_PRODUCT | MAKE_PRODUCER | DEACTIVATE_PRODUCT
+  params      Json
+  userAddress String
+  status      SyncStatus @default(PENDING)
+  txHash      String?
+  errorMsg    String?
+  refId       String?    // lotId or walletAddress
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([userAddress, status])
+  @@index([status])
 }

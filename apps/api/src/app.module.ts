@@ -7,6 +7,7 @@ import { UsersModule } from './modules/users/users.module';
 import { ProducersModule } from './modules/producers/producers.module';
 import { ProductsModule } from './modules/products/products.module';
 import { BlockchainModule } from './modules/blockchain/blockchain.module';
+import { SyncModule } from './modules/sync/sync.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { BlockchainModule } from './modules/blockchain/blockchain.module';
     ProducersModule,
     ProductsModule,
     BlockchainModule,
+    SyncModule,
   ],
 })
 export class AppModule {}

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/Sidebar';
 import { WalletStatus } from '@/components/WalletStatus';
 import { NetworkGuard } from '@/components/NetworkGuard';
+import { SyncBanner } from '@/components/SyncBanner';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -32,7 +33,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <header className="sticky top-0 z-30 flex h-16 items-center justify-end border-b border-white/10 bg-[#0a0a0a]/80 px-6 backdrop-blur-sm">
             <WalletStatus />
           </header>
-          <main className="flex-1 p-6">{children}</main>
+          <main className="flex-1 p-6">
+            <div className="mb-4"><SyncBanner /></div>
+            {children}
+          </main>
         </div>
       </div>
     </NetworkGuard>

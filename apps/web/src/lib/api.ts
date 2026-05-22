@@ -34,6 +34,21 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json();
 }
 
+export async function downloadCertificate(lotId: string): Promise<void> {
+  const token = getToken();
+  const res = await fetch(`${API_URL}/api/products/${lotId}/certificate`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error('Falha ao gerar certificado');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `SELVA-Certificado-${lotId}.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   auth: {
     nonce: (address: string) =>
@@ -60,5 +75,17 @@ export const api = {
     byLotId: (lotId: string) => request<any>(`/api/products/${lotId}`),
     history: (lotId: string) => request<any[]>(`/api/products/${lotId}/history`),
     deactivate: (lotId: string) => request<any>(`/api/products/${lotId}`, { method: 'DELETE' }),
+  },
+  sync: {
+    status: () => request<{ blockchainEnabled: boolean; pendingOperations: number }>('/api/sync/status'),
+    pending: () => request<any[]>('/api/sync/pending'),
+    registerOffline: (data: { name: string; cpf: string; walletAddress: string }) =>
+      request<any>('/api/sync/register', { method: 'POST', body: JSON.stringify(data) }),
+    addProductOffline: (data: { lotId: string; volume: number; origin: string; documentHash: string; producerAddress: string }) =>
+      request<any>('/api/sync/product', { method: 'POST', body: JSON.stringify(data) }),
+    transferOffline: (data: { lotId: string; fromAddress: string; toAddress: string }) =>
+      request<any>('/api/sync/transfer', { method: 'POST', body: JSON.stringify(data) }),
+    confirm: (opId: string, txHash: string) =>
+      request<any>(`/api/sync/confirm/${opId}`, { method: 'PATCH', body: JSON.stringify({ txHash }) }),
   },
 };
