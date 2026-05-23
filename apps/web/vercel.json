@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pnpm --filter @selva/web build",
-  "outputDirectory": "apps/web/.next",
+  "buildCommand": "next build",
+  "outputDirectory": ".next",
   "framework": "nextjs"
 }
