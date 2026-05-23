@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 import { useEffect, useState } from 'react';
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
@@ -96,12 +97,12 @@ export function SyncBanner() {
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 px-4 py-3 text-sm">
+    <div className="flex items-center gap-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 px-4 py-8 text-sm" style={{ padding: "6px" }}>
       <AlertTriangle className="h-4 w-4 shrink-0 text-yellow-400" />
       <div className="flex-1 min-w-0">
         {!status.blockchainEnabled ? (
           <span className="text-yellow-300">
-            <strong>Modo offline ativo</strong> — operações salvas localmente, blockchain desabilitada.
+            <strong>Sem internet</strong> — dados salvos no aparelho.
           </span>
         ) : (
           <span className="text-yellow-300">
@@ -115,8 +116,8 @@ export function SyncBanner() {
         )}
       </div>
       {status.pendingOperations > 0 && (
-        <Button size="sm" variant="outline" onClick={handleSync} loading={syncing}>
-          <RefreshCw className="h-3 w-3" /> Sincronizar
+        <Button size="sm" variant="ghost" onClick={handleSync} loading={syncing} className="cursor-pointer" style={{ padding: "4px 12px" }}>
+          <RefreshCw className="h-3 w-3" /> Enviar dados salvos
         </Button>
       )}
     </div>

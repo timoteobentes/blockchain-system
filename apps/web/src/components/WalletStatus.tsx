@@ -2,7 +2,6 @@
 import { useAccount, useBalance } from 'wagmi';
 import { formatUnits } from 'viem';
 import { shortenAddress } from '@/lib/utils';
-import { Wallet, Circle } from 'lucide-react';
 import { polygonAmoy } from '@/lib/wagmi';
 
 export function WalletStatus() {
@@ -13,14 +12,23 @@ export function WalletStatus() {
   if (!isConnected) return null;
 
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm">
-      <Circle
-        className={`h-2 w-2 fill-current ${isCorrectNetwork ? 'text-[#c3e438]' : 'text-yellow-400'}`}
-      />
-      <Wallet className="h-4 w-4 text-white/50" />
-      <span className="text-white font-mono">{shortenAddress(address ?? '')}</span>
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '7px 14px',
+      borderRadius: 10,
+      background: 'rgba(255,255,255,0.05)',
+      border: '1px solid rgba(255,255,255,0.1)',
+    }}>
+      <div style={{
+        width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+        background: isCorrectNetwork ? '#c3e438' : '#fbbf24',
+        boxShadow: `0 0 6px ${isCorrectNetwork ? '#c3e438' : '#fbbf24'}80`,
+      }} />
+      <span style={{ fontFamily: 'monospace', fontSize: 12.5, color: '#f0f0ee', letterSpacing: '0.02em' }}>
+        {shortenAddress(address ?? '')}
+      </span>
       {balance && (
-        <span className="text-white/50 ml-1">
+        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: 10 }}>
           {parseFloat(formatUnits(balance.value, balance.decimals)).toFixed(3)} MATIC
         </span>
       )}

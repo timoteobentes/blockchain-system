@@ -1,6 +1,6 @@
 import { createConfig, http } from 'wagmi';
 import { defineChain } from 'viem';
-import { injected, metaMask } from 'wagmi/connectors';
+import { injected } from 'wagmi/connectors';
 
 export const polygonAmoy = defineChain({
   id: 80002,
@@ -19,7 +19,7 @@ export const polygonAmoy = defineChain({
 
 export const wagmiConfig = createConfig({
   chains: [polygonAmoy],
-  connectors: [metaMask(), injected()],
+  connectors: [injected()],
   transports: {
     [polygonAmoy.id]: http(
       `https://polygon-amoy.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY ?? ''}`

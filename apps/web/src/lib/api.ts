@@ -6,8 +6,14 @@ export function getToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem(TOKEN_KEY);
 }
-export function setToken(token: string) { localStorage.setItem(TOKEN_KEY, token); }
-export function clearToken() { localStorage.removeItem(TOKEN_KEY); }
+export function setToken(token: string) {
+  localStorage.setItem(TOKEN_KEY, token);
+  document.cookie = `${TOKEN_KEY}=${token}; path=/; max-age=${7 * 24 * 3600}; SameSite=Lax`;
+}
+export function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+  document.cookie = `${TOKEN_KEY}=; path=/; max-age=0`;
+}
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();

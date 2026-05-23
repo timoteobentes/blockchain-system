@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useAccount, useSignMessage, useConnect, useDisconnect } from 'wagmi';
-import { metaMask } from 'wagmi/connectors';
+import { injected } from 'wagmi/connectors';
 import { api, setToken, clearToken, getToken } from '@/lib/api';
 
 export interface AuthUser {
@@ -29,7 +29,7 @@ export function useAuth() {
     if (token && address) {
       api.users.me()
         .then((u: any) => {
-          setUser({ address: u.walletAddress, isRegistered: true, isProducer: u.isProducer, isAdmin: false, name: u.name });
+          setUser({ address: u.walletAddress, isRegistered: true, isProducer: u.isProducer, isAdmin: u.isAdmin, name: u.name });
           setIsAuthenticated(true);
         })
         .catch(() => { clearToken(); setIsAuthenticated(false); })
@@ -46,7 +46,7 @@ export function useAuth() {
 
       let connectedAddress = address;
       if (!isConnected || !connectedAddress) {
-        const result = await connectAsync({ connector: metaMask() });
+        const result = await connectAsync({ connector: injected() });
         connectedAddress = result.accounts[0];
       }
 
