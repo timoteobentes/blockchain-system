@@ -20,9 +20,7 @@ export class ProductsService {
 
     const [data, total] = await Promise.all([
       this.prisma.product.findMany({
-        where,
-        skip,
-        take: limit,
+        where, skip, take: limit,
         orderBy: { onChainAt: 'desc' },
         include: { traces: { orderBy: { blockTimestamp: 'asc' }, take: 1 } },
       }),
@@ -36,14 +34,48 @@ export class ProductsService {
       where: { lotId },
       include: { traces: { orderBy: { blockTimestamp: 'asc' } } },
     });
-    if (!product) throw new NotFoundException('Lote não encontrado');
+    if (!product) throw new NotFoundException('Produção não encontrada');
+    return product;
+  }
+
+  async findPublic(lotId: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { lotId },
+      select: {
+        lotId: true,
+        producerName: true,
+        currentOwnerName: true,
+        originType: true,
+        origin: true,
+        volume: true,
+        active: true,
+        syncStatus: true,
+        onChainAt: true,
+        documentHash: true,
+        producerAddress: true,
+        currentOwnerAddress: true,
+        traces: {
+          orderBy: { blockTimestamp: 'asc' },
+          select: {
+            id: true,
+            action: true,
+            fromName: true,
+            toName: true,
+            fromAddress: true,
+            toAddress: true,
+            blockTimestamp: true,
+            txHash: true,
+          },
+        },
+      },
+    });
+    if (!product) throw new NotFoundException('Produção não encontrada');
     return product;
   }
 
   async getHistory(lotId: string) {
     const product = await this.prisma.product.findUnique({ where: { lotId } });
-    if (!product) throw new NotFoundException('Lote não encontrado');
-
+    if (!product) throw new NotFoundException('Produção não encontrada');
     return this.prisma.trace.findMany({
       where: { productId: product.id },
       orderBy: { blockTimestamp: 'asc' },
@@ -52,15 +84,11 @@ export class ProductsService {
 
   async deactivate(lotId: string) {
     const product = await this.prisma.product.findUnique({ where: { lotId } });
-    if (!product) throw new NotFoundException('Lote não encontrado');
+    if (!product) throw new NotFoundException('Produção não encontrada');
 
     const txHash = await this.blockchain.deactivateProduct(lotId);
+    await this.prisma.product.update({ where: { lotId }, data: { active: false } });
 
-    await this.prisma.product.update({
-      where: { lotId },
-      data: { active: false },
-    });
-
-    return { success: true, txHash, message: 'Lote desativado' };
+    return { success: true, txHash, message: 'Produção desativada' };
   }
 }

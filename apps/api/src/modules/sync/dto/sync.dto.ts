@@ -10,6 +10,7 @@ export class AddProductOfflineDto {
   @IsString() @IsNotEmpty() lotId: string;
   @IsNumber() @Min(1) volume: number;
   @IsString() @IsNotEmpty() origin: string;
+  @IsString() @IsOptional() originType?: string;
   @IsString() @IsNotEmpty() documentHash: string;
   @IsString() @IsNotEmpty() producerAddress: string;
 }

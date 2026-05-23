@@ -4,7 +4,7 @@ import { ethers } from 'ethers';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BlockchainService } from './blockchain.service';
 
-const CHUNK_SIZE = 2000n; // máximo de blocos por consulta (limite Alchemy free tier)
+const CHUNK_SIZE = 2000n;
 
 @Injectable()
 export class IndexerService {
@@ -30,7 +30,7 @@ export class IndexerService {
   }
 
   private async runSync() {
-    let state = await this.prisma.syncState.upsert({
+    const state = await this.prisma.syncState.upsert({
       where: { id: 1 },
       create: { id: 1, lastBlock: 0n },
       update: {},
@@ -72,7 +72,6 @@ export class IndexerService {
       const userHash: string = evt.args.userHash;
       const userAddress: string = evt.args.userAddress;
       const [name, cpf, , createdAt] = await this.blockchain.getUser(userHash);
-      const block = await evt.getBlock();
 
       await this.prisma.user.upsert({
         where: { userHash },
@@ -110,14 +109,24 @@ export class IndexerService {
       const [, volume, origin, producer, currentOwner, documentHash, createdAt] =
         await this.blockchain.getProduct(lotId);
 
+      // Buscar nome do produtor pelo endereço
+      const producerUser = await this.prisma.user.findUnique({
+        where: { walletAddress: producer.toLowerCase() },
+        select: { name: true },
+      });
+      const producerName = producerUser?.name ?? '';
+
       const product = await this.prisma.product.upsert({
         where: { lotId },
         create: {
           lotId,
           volume: Number(volume),
           origin,
+          originType: 'PESSOA',
           producerAddress: producer.toLowerCase(),
+          producerName,
           currentOwnerAddress: currentOwner.toLowerCase(),
+          currentOwnerName: producerName,
           documentHash,
           active: true,
           onChainAt: new Date(Number(createdAt) * 1000),
@@ -136,13 +145,15 @@ export class IndexerService {
           docHash: documentHash,
           fromAddress: ethers.ZeroAddress,
           toAddress: producer.toLowerCase(),
+          fromName: '',
+          toName: producerName,
           blockTimestamp: new Date(block.timestamp * 1000),
           txHash: evt.transactionHash,
           blockNumber: BigInt(evt.blockNumber),
         },
         update: {},
       });
-      this.logger.log(`ProductAdded: ${lotId}`);
+      this.logger.log(`ProductAdded: ${lotId} — ${producerName}`);
     } catch (err) {
       this.logger.error('handleProductAdded falhou', err);
     }
@@ -155,9 +166,20 @@ export class IndexerService {
       const to: string = evt.args.to;
       const block = await evt.getBlock();
 
+      // Buscar nomes dos envolvidos
+      const [fromUser, toUser] = await Promise.all([
+        this.prisma.user.findUnique({ where: { walletAddress: from.toLowerCase() }, select: { name: true } }),
+        this.prisma.user.findUnique({ where: { walletAddress: to.toLowerCase() }, select: { name: true } }),
+      ]);
+      const fromName = fromUser?.name ?? '';
+      const toName = toUser?.name ?? '';
+
       const product = await this.prisma.product.update({
         where: { lotId },
-        data: { currentOwnerAddress: to.toLowerCase() },
+        data: {
+          currentOwnerAddress: to.toLowerCase(),
+          currentOwnerName: toName,
+        },
       });
 
       const traceId = `${lotId}-TRANSFERRED-${evt.transactionHash}`;
@@ -171,13 +193,15 @@ export class IndexerService {
           docHash: product.documentHash,
           fromAddress: from.toLowerCase(),
           toAddress: to.toLowerCase(),
+          fromName,
+          toName,
           blockTimestamp: new Date(block.timestamp * 1000),
           txHash: evt.transactionHash,
           blockNumber: BigInt(evt.blockNumber),
         },
         update: {},
       });
-      this.logger.log(`OwnershipTransferred: ${lotId} → ${to}`);
+      this.logger.log(`OwnershipTransferred: ${lotId} → ${toName || to}`);
     } catch (err) {
       this.logger.error('handleOwnershipTransferred falhou', err);
     }

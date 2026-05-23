@@ -41,7 +41,6 @@ export class SyncService {
     const existing = await this.prisma.user.findUnique({ where: { walletAddress: addr } });
     if (existing) throw new BadRequestException('Usuário já registrado');
 
-    // Generate a placeholder userHash (will be replaced by indexer on sync)
     const userHash = ethers.keccak256(ethers.toUtf8Bytes(`offline:${addr}:${Date.now()}`));
 
     const [user, op] = await this.prisma.$transaction([
@@ -74,7 +73,14 @@ export class SyncService {
     const producer = dto.producerAddress.toLowerCase();
 
     const existing = await this.prisma.product.findUnique({ where: { lotId: dto.lotId } });
-    if (existing) throw new BadRequestException('Lote já registrado');
+    if (existing) throw new BadRequestException('Produção já registrada');
+
+    // Buscar nome do produtor
+    const producerUser = await this.prisma.user.findUnique({
+      where: { walletAddress: producer },
+      select: { name: true },
+    });
+    const producerName = producerUser?.name ?? '';
 
     const traceId = `${dto.lotId}-CREATED-offline`;
 
@@ -84,8 +90,11 @@ export class SyncService {
           lotId: dto.lotId,
           volume: dto.volume,
           origin: dto.origin,
+          originType: dto.originType ?? 'PESSOA',
           producerAddress: producer,
+          producerName,
           currentOwnerAddress: producer,
+          currentOwnerName: producerName,
           documentHash: dto.documentHash,
           active: true,
           syncStatus: 'PENDING',
@@ -98,6 +107,8 @@ export class SyncService {
               docHash: dto.documentHash,
               fromAddress: ethers.ZeroAddress,
               toAddress: producer,
+              fromName: '',
+              toName: producerName,
               blockTimestamp: new Date(),
             },
           },
@@ -110,6 +121,7 @@ export class SyncService {
             lotId: dto.lotId,
             volume: dto.volume,
             origin: dto.origin,
+            originType: dto.originType ?? 'PESSOA',
             documentHash: dto.documentHash,
           },
           userAddress: producer,
@@ -124,11 +136,21 @@ export class SyncService {
 
   async transferOffline(dto: TransferOfflineDto) {
     const product = await this.prisma.product.findUnique({ where: { lotId: dto.lotId } });
-    if (!product) throw new NotFoundException('Lote não encontrado');
-    if (!product.active) throw new BadRequestException('Lote inativo');
+    if (!product) throw new NotFoundException('Produção não encontrada');
+    if (!product.active) throw new BadRequestException('Produção inativa');
     if (product.currentOwnerAddress !== dto.fromAddress.toLowerCase()) {
-      throw new BadRequestException('Você não é o proprietário atual do lote');
+      throw new BadRequestException('Você não é o responsável atual por esta produção');
     }
+
+    const toAddr = dto.toAddress.toLowerCase();
+
+    // Buscar nome do novo responsável
+    const toUser = await this.prisma.user.findUnique({
+      where: { walletAddress: toAddr },
+      select: { name: true },
+    });
+    const toName = toUser?.name ?? '';
+    const fromName = product.currentOwnerName ?? '';
 
     const traceId = `${dto.lotId}-TRANSFERRED-offline-${Date.now()}`;
 
@@ -136,7 +158,8 @@ export class SyncService {
       this.prisma.product.update({
         where: { lotId: dto.lotId },
         data: {
-          currentOwnerAddress: dto.toAddress.toLowerCase(),
+          currentOwnerAddress: toAddr,
+          currentOwnerName: toName,
           syncStatus: 'PENDING',
           traces: {
             create: {
@@ -145,7 +168,9 @@ export class SyncService {
               action: 'TRANSFERRED',
               docHash: product.documentHash,
               fromAddress: dto.fromAddress.toLowerCase(),
-              toAddress: dto.toAddress.toLowerCase(),
+              toAddress: toAddr,
+              fromName,
+              toName,
               blockTimestamp: new Date(),
             },
           },
@@ -178,19 +203,16 @@ export class SyncService {
       data: { status: 'SYNCED', txHash },
     });
 
-    // Update the referenced record's syncStatus
     if (op.type === 'REGISTER_USER' && op.refId) {
       await this.prisma.user.updateMany({
         where: { walletAddress: op.refId },
         data: { syncStatus: 'SYNCED' },
       });
     } else if ((op.type === 'ADD_PRODUCT' || op.type === 'TRANSFER_PRODUCT') && op.refId) {
-      // Update the most recent offline trace with the real txHash
       await this.prisma.trace.updateMany({
         where: { product: { lotId: op.refId }, txHash: null },
         data: { txHash },
       });
-      // Check if all traces are synced
       const pendingTraces = await this.prisma.trace.count({
         where: { product: { lotId: op.refId }, txHash: null },
       });

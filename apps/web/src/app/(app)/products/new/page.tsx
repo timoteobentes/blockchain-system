@@ -7,7 +7,6 @@ import { ArrowLeft, Upload, AlertCircle, CheckCircle, Wifi, WifiOff } from 'luci
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { SELVA_ABI, CONTRACT_ADDRESS } from '@/contracts/abi';
-import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
 
 async function fileSha256(file: File): Promise<`0x${string}`> {
@@ -31,11 +30,16 @@ const inputStyle: React.CSSProperties = {
   color: '#f0f0ee', fontSize: 14, outline: 'none', boxSizing: 'border-box',
 };
 
+const ORIGIN_TYPES = [
+  { value: 'PESSOA', label: 'Pessoa física' },
+  { value: 'ASSOCIACAO', label: 'Associação' },
+  { value: 'COMUNIDADE', label: 'Comunidade' },
+];
+
 export default function NewProductPage() {
   const router = useRouter();
-  const { user } = useAuth();
   const { address } = useAccount();
-  const [form, setForm] = useState({ lotId: '', volume: '', origin: '' });
+  const [form, setForm] = useState({ lotId: '', volume: '', origin: '', originType: 'PESSOA' });
   const [docHash, setDocHash] = useState<`0x${string}` | null>(null);
   const [fileName, setFileName] = useState('');
   const [error, setError] = useState('');
@@ -62,7 +66,7 @@ export default function NewProductPage() {
     e.preventDefault();
     setError('');
     if (!docHash) { setError('Anexe o documento de licença'); return; }
-    if (!address) { setError('Carteira não conectada'); return; }
+    if (!address) { setError('Carteira digital não conectada'); return; }
 
     if (offlineMode) {
       setOfflineResult('loading');
@@ -73,10 +77,11 @@ export default function NewProductPage() {
           origin: form.origin,
           documentHash: docHash,
           producerAddress: address,
+          originType: form.originType,
         });
         setOfflineResult('success');
       } catch (e: any) {
-        setError(e?.message ?? 'Erro ao registrar offline');
+        setError(e?.message ?? 'Erro ao registrar');
         setOfflineResult('error');
       }
       return;
@@ -104,14 +109,14 @@ export default function NewProductPage() {
           <CheckCircle size={28} color="#c3e438" />
         </div>
         <div style={{ textAlign: 'center' }}>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#f0f0ee', margin: 0 }}>Lote registrado com sucesso!</h2>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#f0f0ee', margin: 0 }}>Produção registrada com sucesso!</h2>
           <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', margin: '8px 0 0' }}>
             {offlineResult === 'success'
-              ? 'Salvo no banco de dados. Será sincronizado com a blockchain quando disponível.'
-              : 'Transação confirmada na Polygon Amoy.'}
+              ? 'Salvo localmente. Será enviado para o sistema de rastreabilidade quando disponível.'
+              : 'Registro confirmado na rede de verificação.'}
           </p>
         </div>
-        <Button onClick={() => router.push('/products')} style={{ padding: "4px 12px", cursor: "pointer" }}>Ver lotes</Button>
+        <Button onClick={() => router.push('/products')} style={{ padding: "4px 12px", cursor: "pointer" }}>Ver produções</Button>
       </div>
     );
   }
@@ -125,12 +130,14 @@ export default function NewProductPage() {
         </Link>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 800, color: '#f0f0ee', margin: 0 }}>Cadastrar produção</h1>
-          <p style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.4)', margin: '3px 0 0' }}>Registrar lote na {offlineMode ? 'fila sem internet' : 'blockchain'}</p>
+          <p style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.4)', margin: '3px 0 0' }}>
+            {offlineMode ? 'Salvo localmente até ter conexão' : 'Registrar no sistema de rastreabilidade'}
+          </p>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: offlineMode ? 'rgba(251,191,36,0.1)' : 'rgba(195,228,56,0.1)', border: `1px solid ${offlineMode ? 'rgba(251,191,36,0.2)' : 'rgba(195,228,56,0.2)'}` }}>
           {offlineMode ? <WifiOff size={13} color="#fbbf24" /> : <Wifi size={13} color="#c3e438" />}
           <span style={{ fontSize: 11, fontWeight: 600, color: offlineMode ? '#fbbf24' : '#c3e438' }}>
-            {offlineMode ? 'Sem internet' : 'Online'}
+            {offlineMode ? 'Sem conexão' : 'Online'}
           </span>
         </div>
       </div>
@@ -139,9 +146,9 @@ export default function NewProductPage() {
         <div style={{ display: 'flex', gap: 12, padding: '14px 18px', borderRadius: 12, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
           <WifiOff size={17} color="#fbbf24" style={{ flexShrink: 0, marginTop: 1 }} />
           <div>
-            <p style={{ fontSize: 13, fontWeight: 700, color: '#fbbf24', margin: '0 0 3px' }}>Cadastro sem internet ativado</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: '#fbbf24', margin: '0 0 3px' }}>Modo sem conexão ativado</p>
             <p style={{ fontSize: 12.5, color: 'rgba(251,191,36,0.75)', margin: 0, lineHeight: 1.55 }}>
-              As informações ficarão salvas e serão enviadas para o registro digital quando a internet voltar.
+              As informações ficarão salvas e serão enviadas para o sistema de rastreabilidade quando a conexão voltar.
             </p>
           </div>
         </div>
@@ -150,6 +157,17 @@ export default function NewProductPage() {
       {/* Form */}
       <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 24 }}>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <Field label="Tipo de cadastro">
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {ORIGIN_TYPES.map(({ value, label }) => (
+                <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', padding: '8px 14px', borderRadius: 9, border: `1px solid ${form.originType === value ? 'rgba(195,228,56,0.5)' : 'rgba(255,255,255,0.1)'}`, background: form.originType === value ? 'rgba(195,228,56,0.08)' : 'transparent', transition: 'all 0.15s' }}>
+                  <input type="radio" name="originType" value={value} checked={form.originType === value} onChange={e => setForm(f => ({ ...f, originType: e.target.value }))} style={{ accentColor: '#c3e438' }} />
+                  <span style={{ fontSize: 13, color: form.originType === value ? '#c3e438' : 'rgba(255,255,255,0.6)' }}>{label}</span>
+                </label>
+              ))}
+            </div>
+          </Field>
+
           <Field label="Código da produção">
             <input
               style={inputStyle} placeholder="ex: COPA-2025-001"
@@ -207,12 +225,12 @@ export default function NewProductPage() {
           {txPending && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #c3e438', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
-              <span style={{ fontSize: 13, color: '#c3e438' }}>Aguardando confirmação na blockchain...</span>
+              <span style={{ fontSize: 13, color: '#c3e438' }}>Aguardando confirmação do registro...</span>
             </div>
           )}
 
           <Button type="submit" size="lg" loading={isBusy} style={{ width: '100%', marginTop: 4, cursor: "pointer" }}>
-            {offlineMode ? 'Salvar cadastro' : 'Registrar na blockchain'}
+            {offlineMode ? 'Salvar cadastro' : 'Registrar produção'}
           </Button>
         </form>
       </div>

@@ -35,8 +35,11 @@ model Product {
   lotId               String     @unique
   volume              Int
   origin              String
+  originType          String     @default("PESSOA")
   producerAddress     String
+  producerName        String     @default("")
   currentOwnerAddress String
+  currentOwnerName    String     @default("")
   documentHash        String
   active              Boolean    @default(true)
   syncStatus          SyncStatus @default(SYNCED)
@@ -59,6 +62,8 @@ model Trace {
   docHash        String
   fromAddress    String
   toAddress      String
+  fromName       String   @default("")
+  toName         String   @default("")
   blockTimestamp DateTime
   txHash         String?
   blockNumber    BigInt?

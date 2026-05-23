@@ -17,25 +17,25 @@ export class ProductsController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Lista lotes com filtros opcionais' })
+  @ApiOperation({ summary: 'Lista produções com filtros opcionais' })
   findAll(@Query() query: ProductQueryDto) {
     return this.productsService.findAll(query);
   }
 
-  @Get(':lotId')
-  @ApiOperation({ summary: 'Detalhes de um lote' })
-  findOne(@Param('lotId') lotId: string) {
-    return this.productsService.findOne(lotId);
+  @Get(':lotId/public')
+  @ApiOperation({ summary: 'Dados públicos de uma produção (sem autenticação)' })
+  findPublic(@Param('lotId') lotId: string) {
+    return this.productsService.findPublic(lotId);
   }
 
   @Get(':lotId/history')
-  @ApiOperation({ summary: 'Histórico completo de rastreabilidade de um lote' })
+  @ApiOperation({ summary: 'Histórico completo de rastreabilidade de uma produção' })
   history(@Param('lotId') lotId: string) {
     return this.productsService.getHistory(lotId);
   }
 
   @Get(':lotId/certificate')
-  @ApiOperation({ summary: 'Gera o Certificado de Rastreabilidade em PDF' })
+  @ApiOperation({ summary: 'Gera o Comprovante de Rastreabilidade em PDF' })
   async certificate(@Param('lotId') lotId: string, @Res() res: Response) {
     const [product, traces] = await Promise.all([
       this.productsService.findOne(lotId),
@@ -46,17 +46,23 @@ export class ProductsController {
 
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="SELVA-Certificado-${lotId}.pdf"`,
+      'Content-Disposition': `attachment; filename="SELVA-Comprovante-${lotId}.pdf"`,
       'Content-Length': pdfBuffer.length,
     });
     res.end(pdfBuffer);
+  }
+
+  @Get(':lotId')
+  @ApiOperation({ summary: 'Detalhes de uma produção' })
+  findOne(@Param('lotId') lotId: string) {
+    return this.productsService.findOne(lotId);
   }
 
   @Delete(':lotId')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
-  @ApiOperation({ summary: 'Desativa um lote (admin only)' })
+  @ApiOperation({ summary: 'Desativa uma produção (admin only)' })
   deactivate(@Param('lotId') lotId: string) {
     return this.productsService.deactivate(lotId);
   }

@@ -40,6 +40,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json();
 }
 
+export function getPublicProductUrl(lotId: string): string {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+  return `${appUrl}/p/${lotId}`;
+}
+
 export async function downloadCertificate(lotId: string): Promise<void> {
   const token = getToken();
   const res = await fetch(`${API_URL}/api/products/${lotId}/certificate`, {
@@ -66,6 +71,7 @@ export const api = {
     list: (page = 1, limit = 20) => request<any>(`/api/users?page=${page}&limit=${limit}`),
     me: () => request<any>('/api/users/me'),
     byAddress: (address: string) => request<any>(`/api/users/${address}`),
+    lookupByCpf: (cpf: string) => request<{ name: string; walletAddress: string; isProducer: boolean }>(`/api/users/lookup?cpf=${encodeURIComponent(cpf)}`),
   },
   producers: {
     list: () => request<any[]>('/api/producers'),
@@ -79,6 +85,7 @@ export const api = {
       return request<any>(`/api/products${q ? '?' + q : ''}`);
     },
     byLotId: (lotId: string) => request<any>(`/api/products/${lotId}`),
+    public: (lotId: string) => request<any>(`/api/products/${lotId}/public`),
     history: (lotId: string) => request<any[]>(`/api/products/${lotId}/history`),
     deactivate: (lotId: string) => request<any>(`/api/products/${lotId}`, { method: 'DELETE' }),
   },
@@ -87,7 +94,7 @@ export const api = {
     pending: () => request<any[]>('/api/sync/pending'),
     registerOffline: (data: { name: string; cpf: string; walletAddress: string }) =>
       request<any>('/api/sync/register', { method: 'POST', body: JSON.stringify(data) }),
-    addProductOffline: (data: { lotId: string; volume: number; origin: string; documentHash: string; producerAddress: string }) =>
+    addProductOffline: (data: { lotId: string; volume: number; origin: string; documentHash: string; producerAddress: string; originType?: string }) =>
       request<any>('/api/sync/product', { method: 'POST', body: JSON.stringify(data) }),
     transferOffline: (data: { lotId: string; fromAddress: string; toAddress: string }) =>
       request<any>('/api/sync/transfer', { method: 'POST', body: JSON.stringify(data) }),

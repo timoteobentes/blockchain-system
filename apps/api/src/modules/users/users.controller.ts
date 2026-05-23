@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UserQueryDto } from './dto/user.dto';
@@ -20,8 +20,16 @@ export class UsersController {
 
   @Get('me')
   @ApiOperation({ summary: 'Perfil do usuário autenticado' })
-  me(@CurrentUser() user: JwtPayload) {
-    return this.usersService.findByAddress(user.sub);
+  async me(@CurrentUser() user: JwtPayload) {
+    const dbUser = await this.usersService.findByAddress(user.sub);
+    return { ...dbUser, isAdmin: user.isAdmin };
+  }
+
+  @Get('lookup')
+  @ApiOperation({ summary: 'Busca usuário pelo CPF para transferência de produção' })
+  lookup(@Query('cpf') cpf: string) {
+    if (!cpf) throw new BadRequestException('CPF é obrigatório');
+    return this.usersService.findByCpf(cpf);
   }
 
   @Get(':address')

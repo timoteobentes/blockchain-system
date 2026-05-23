@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserQueryDto } from './dto/user.dto';
 
@@ -27,6 +27,18 @@ export class UsersService {
       select: { id: true, userHash: true, name: true, walletAddress: true, isProducer: true, onChainAt: true },
     });
     if (!user) throw new NotFoundException('Usuário não encontrado');
+    return user;
+  }
+
+  async findByCpf(cpf: string) {
+    const digits = cpf.replace(/\D/g, '');
+    if (digits.length !== 11) throw new BadRequestException('CPF inválido');
+    const formatted = `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+    const user = await this.prisma.user.findFirst({
+      where: { OR: [{ cpf: formatted }, { cpf: digits }] },
+      select: { name: true, walletAddress: true, isProducer: true },
+    });
+    if (!user) throw new NotFoundException('Nenhum produtor encontrado com este CPF. Verifique se ele está cadastrado no sistema.');
     return user;
   }
 }
