@@ -1,280 +1,311 @@
-# SELVA — Como Testar Localmente
+# SELVA — Guia de Deploy em Produção
 
-Guia passo a passo para subir a aplicação, abrir no navegador e testar o fluxo completo.
-
----
-
-## Pré-requisitos
-
-Verifique antes de começar:
-
-- [ ] **Node.js 20+** instalado → `node -v`
-- [ ] **pnpm 9+** instalado → `pnpm -v` (instalar: `npm install -g pnpm`)
-- [ ] **MetaMask** instalado no browser (Chrome/Brave/Edge)
-- [ ] Dependências instaladas → se não rodou ainda: `pnpm install` na raiz
+> Cenário: conta **Vercel gratuita** (sem suporte a Turborepo remoto) + **Oracle Cloud Free Tier** (VM ARM).
+> Cada app é implantado de forma independente — sem precisar do monorepo completo no servidor.
 
 ---
 
-## Parte 1 — Corrigir o `.env` da API (2 ajustes necessários)
+## Visão geral da arquitetura
 
-Abra o arquivo `apps/api/.env` e faça as duas correções abaixo:
-
-### 1.1 — Completar a URL do RPC Alchemy
-
-Localize esta linha:
 ```
-POLYGON_AMOY_RPC=https://polygon-amoy.g.alchemy.com/v2/
-```
-Adicione a chave da Alchemy no final (a mesma que está em `ALCHEMY_API_KEY`):
-```
-POLYGON_AMOY_RPC=https://polygon-amoy.g.alchemy.com/v2/CdERyb35fgC_NWq6pD34I
+Internet
+   │
+   ├── selva.vercel.app  →  apps/web  (Next.js, Vercel)
+   │
+   └── api.selva.eco.br  →  apps/api  (NestJS, Oracle Cloud VM)
+                               │
+                               ├── Supabase (PostgreSQL)
+                               └── Upstash (Redis)
 ```
 
-### 1.2 — Ativar o modo offline (sem MATIC disponível)
+---
 
-Adicione esta linha no final do arquivo:
+## Parte 1 — Backend na Oracle Cloud (apps/api)
+
+### 1.1 Criar a instância gratuita
+
+1. Acesse [cloud.oracle.com](https://cloud.oracle.com) → **Compute → Instances → Create Instance**
+2. Configurações:
+   - **Shape:** `VM.Standard.A1.Flex` (ARM) — **4 OCPUs, 24 GB RAM** (gratuito)
+   - **OS:** Ubuntu 22.04
+   - **Storage:** 50 GB (gratuito)
+   - **SSH key:** gere ou importe sua chave pública
+3. Anote o **IP público** da instância após criação
+
+### 1.2 Abrir portas na Oracle
+
+Na instância → **Security Lists → Default Security List → Add Ingress Rules**:
+
+| Protocolo | Porta | Origem     |
+|-----------|-------|------------|
+| TCP       | 22    | 0.0.0.0/0  |
+| TCP       | 80    | 0.0.0.0/0  |
+| TCP       | 443   | 0.0.0.0/0  |
+| TCP       | 3001  | 0.0.0.0/0  |
+
+### 1.3 Configurar o servidor
+
+Conecte via SSH e execute:
+
+```bash
+ssh ubuntu@<IP_ORACLE>
+
+# Atualizar sistema
+sudo apt update && sudo apt upgrade -y
+
+# Instalar Node.js 20
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Instalar pnpm, PM2 e Nginx
+npm install -g pnpm pm2
+sudo apt install -y nginx iptables-persistent
+
+# Liberar portas no firewall interno do Ubuntu
+sudo iptables -I INPUT -p tcp --dport 3001 -j ACCEPT
+sudo iptables -I INPUT -p tcp --dport 80 -j ACCEPT
+sudo netfilter-persistent save
 ```
+
+### 1.4 Clonar e configurar a API
+
+```bash
+git clone https://github.com/<seu-usuario>/blockchain-system.git
+cd blockchain-system
+
+# Instalar dependências apenas do apps/api (inclui dependências transitivas)
+pnpm install --filter @selva/api...
+
+# Copiar e preencher o .env
+cp apps/api/.env.production.example apps/api/.env
+nano apps/api/.env
+```
+
+Preencha `apps/api/.env` com os valores reais:
+
+```env
+DATABASE_URL=postgresql://postgres.[ref]:[senha]@aws-0-us-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true
+DIRECT_URL=postgresql://postgres.[ref]:[senha]@aws-0-us-east-1.pooler.supabase.com:5432/postgres
+UPSTASH_REDIS_REST_URL=https://[...].upstash.io
+UPSTASH_REDIS_REST_TOKEN=[token]
+JWT_SECRET=[string-aleatoria-minimo-64-caracteres]
+ADMIN_WALLET_ADDRESS=0x[sua-carteira-admin]
+CONTRACT_ADDRESS=0x[endereco-do-contrato-ou-vazio]
 BLOCKCHAIN_ENABLED=false
-```
-
-> **O que isso faz:** a API opera somente com o banco de dados Supabase. Registros, produtos e transferências são salvos localmente com status "PENDENTE". Quando o contrato for deployado e houver MATIC, mude para `BLOCKCHAIN_ENABLED=true` e tudo sincronizará com a blockchain.
-
-O arquivo deve terminar assim:
-```
-ADMIN_WALLET_ADDRESS=0x7E043Fe7f5D2BF1aE0c9A1FD3287751f6E584d30
-
-FRONTEND_URL=http://localhost:3000
+ALCHEMY_API_KEY=[sua-chave-alchemy]
+APP_URL=https://[seu-projeto].vercel.app
+FRONTEND_URL=https://[seu-projeto].vercel.app
 PORT=3001
+```
 
-BLOCKCHAIN_ENABLED=false
+### 1.5 Migrations e build
+
+```bash
+cd apps/api
+
+# Aplicar migrations no banco de produção
+# (NUNCA use migrate dev em produção — use migrate deploy)
+npx prisma migrate deploy
+npx prisma generate
+
+# Build da API
+npm run build
+
+cd ../..
+```
+
+### 1.6 Iniciar com PM2
+
+```bash
+pm2 start apps/api/dist/main.js --name selva-api
+
+# Salvar configuração para sobreviver a reboots
+pm2 save
+pm2 startup
+# → Execute o comando sudo que o PM2 sugerir
+
+# Verificar
+pm2 status
+pm2 logs selva-api
+```
+
+### 1.7 Configurar Nginx como proxy reverso
+
+```bash
+sudo nano /etc/nginx/sites-available/selva-api
+```
+
+Cole o conteúdo:
+
+```nginx
+server {
+    listen 80;
+    server_name <IP_ORACLE>;
+
+    location / {
+        proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/selva-api /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### 1.8 Verificar
+
+```bash
+# No próprio servidor
+curl http://localhost:3001/api/sync/status
+
+# De fora (no seu computador)
+curl http://<IP_ORACLE>/api/sync/status
+# Esperado: {"blockchainEnabled":false,"pendingOperations":0}
+```
+
+### 1.9 Atualizar a API após mudanças no código
+
+```bash
+cd ~/blockchain-system
+git pull
+pnpm install --filter @selva/api...
+cd apps/api
+npx prisma migrate deploy
+npm run build
+cd ../..
+pm2 restart selva-api
 ```
 
 ---
 
-## Parte 2 — Configurar a MetaMask
+## Parte 2 — Frontend na Vercel (apps/web)
 
-### 2.1 — Adicionar a rede Polygon Amoy
+> Na conta gratuita da Vercel não é possível usar Turborepo remoto.
+> A solução é apontar o Vercel diretamente para `apps/web`, que **não depende**
+> de nenhum pacote local do monorepo — funciona como uma app Next.js standalone.
 
-1. Abra a MetaMask → clique no seletor de rede (topo) → **"Adicionar rede"**
-2. Clique em **"Adicionar rede manualmente"**
-3. Preencha:
+### 2.1 Importar o projeto na Vercel
+
+1. Acesse [vercel.com](https://vercel.com) → **Add New → Project**
+2. Conecte o repositório GitHub
+3. Na tela de configuração, preencha:
 
 | Campo | Valor |
 |---|---|
-| Nome da rede | `Polygon Amoy Testnet` |
-| URL do RPC | `https://polygon-amoy.g.alchemy.com/v2/CdERyb35fgC_NWq6pD34I` |
-| ID da rede (Chain ID) | `80002` |
-| Símbolo da moeda | `MATIC` |
-| URL do explorador | `https://amoy.polygonscan.com` |
+| **Framework Preset** | Next.js |
+| **Root Directory** | `apps/web` ← **obrigatório** |
+| **Build Command** | `next build` (deixar auto) |
+| **Output Directory** | `.next` (deixar auto) |
+| **Install Command** | `npm install` |
 
-4. Clique em **Salvar**
-5. Selecione **Polygon Amoy Testnet** como rede ativa
+> **Por que `Root Directory = apps/web`?**
+> Com isso a Vercel instala e faz o build apenas de `apps/web`, sem precisar do
+> Turborepo ou do workspace raiz. Como `apps/web` não importa nenhum `@selva/*`
+> local, funciona de forma completamente independente na conta gratuita.
 
-### 2.2 — Ter ao menos uma conta na MetaMask
+### 2.2 Variáveis de ambiente na Vercel
 
-- Use qualquer conta existente ou crie uma nova
-- No modo offline, **não precisa de MATIC** — nenhuma transação real será enviada
-- Anote o endereço `0x...` da sua conta (você vai precisar para se promover a produtor)
+Em **Settings → Environment Variables**, adicione:
 
----
-
-## Parte 3 — Subir os servidores
-
-Abra **dois terminais separados** na raiz do projeto:
-
-### Terminal 1 — API (NestJS)
-
-```bash
-pnpm --filter @selva/api dev
-```
-
-Aguarde aparecer:
-```
-[Nest] LOG  Application is running on: http://[::1]:3001
-```
-
-> **Swagger (documentação da API):** http://localhost:3001/api/docs
-
-### Terminal 2 — Frontend (Next.js)
-
-```bash
-pnpm --filter @selva/web dev
-```
-
-Aguarde aparecer:
-```
-▲ Next.js 15.x.x
-✓ Ready on http://localhost:3000
-```
-
----
-
-## Parte 4 — Testar no navegador
-
-Abra: **http://localhost:3000**
-
----
-
-### Passo 4.1 — Autenticação
-
-1. Você verá a landing page do SELVA
-2. Clique no botão **"Acessar Plataforma"** (ou navegue para `/auth`)
-3. Clique em **"Conectar MetaMask"** → aprove a conexão na extensão
-4. Clique em **"Autenticar"** → assine a mensagem que a MetaMask exibir
-   - Esta assinatura **não gera transação** nem consome MATIC
-5. Você será redirecionado ao **Dashboard**
-
-> No canto superior direito aparecerá seu endereço conectado e um banner amarelo indicando o modo offline.
-
----
-
-### Passo 4.2 — Registrar-se como usuário
-
-> No modo offline, este passo registra você no banco de dados local.
-
-1. Vá para **`/auth`** → seção de registro
-2. Preencha **nome** e **CPF**
-3. Clique em **"Registrar"**
-4. Um `PendingOperation` do tipo `REGISTER_USER` será criado no banco
-
----
-
-### Passo 4.3 — Promover a Produtor (como Admin)
-
-O endereço admin está definido em `ADMIN_WALLET_ADDRESS` no `.env`. Se você estiver logado com essa wallet, terá acesso ao painel admin.
-
-1. Vá para **`/admin/users`**
-2. Localize seu endereço na tabela
-3. Clique em **"Promover"** na linha correspondente
-4. O status mudará para **Produtor** (com badge amarelo "Pendente blockchain")
-
-> Se sua wallet **não for** a admin, conecte a wallet que está em `ADMIN_WALLET_ADDRESS` e repita.
-
----
-
-### Passo 4.4 — Registrar um Lote (Produto)
-
-1. Vá para **`/products`** → clique em **"Novo Lote"**
-2. Preencha:
-   - **ID do Lote:** `COPA-DEMO-001`
-   - **Volume:** `500`
-   - **Origem:** `Copaifera langsdorffii — Manaus/AM`
-   - **Documento:** faça upload de qualquer arquivo PDF (o hash SHA-256 é calculado no browser)
-3. Clique em **"Registrar na blockchain"**
-   - No modo offline: salva no banco sem transação MetaMask
-4. O lote aparecerá na lista de produtos com badge **"Pendente blockchain"**
-
----
-
-### Passo 4.5 — Ver o Lote e Baixar o Certificado
-
-1. Na lista de produtos, clique na seta → direito do lote `COPA-DEMO-001`
-2. Você verá:
-   - Informações do lote (volume, origem, produtor, proprietário atual)
-   - Timeline de rastreabilidade com o evento **"Registrado"**
-   - Badge amarelo **"Pendente blockchain"**
-3. Clique em **"Certificado"** → o PDF será baixado automaticamente
-
-> O PDF terá marca d'água **"PENDENTE"** e QR codes apontando para `selva.eco.br` (pois ainda não há txHash da blockchain). Quando sincronizado, o certificado final terá os QR codes do Polygonscan.
-
----
-
-### Passo 4.6 — Transferir Custódia do Lote
-
-1. Na página do lote, clique em **"Transferir"**
-2. Insira o endereço `0x...` do destinatário
-3. Clique em **"Transferir propriedade"**
-   - No modo offline: registra a transferência no banco
-4. A timeline do lote agora mostrará dois eventos: **Registrado** + **Transferido**
-5. Baixe o certificado novamente — haverá um novo QR para a transferência
-
----
-
-### Passo 4.7 — Verificar o Banner de Sincronização
-
-No canto superior do layout aparecerá o banner:
-
-> **"X operação(ões) pendente(s) de sincronização com a blockchain"**
-
-Quando houver MATIC e o contrato estiver deployado:
-1. Mude `BLOCKCHAIN_ENABLED=true` no `.env` e reinicie a API
-2. Preencha `CONTRACT_ADDRESS` no `.env` da API e no `apps/web/.env.local`
-3. Clique em **"Sincronizar"** no banner
-4. A MetaMask abrirá para cada operação pendente — assine uma a uma
-5. Após confirmar todas, as badges "Pendente" desaparecem e os certificados são emitidos com hashes reais
-
----
-
-## Parte 5 — Ativar o Modo Blockchain (quando tiver MATIC)
-
-### 5.1 — Fazer o deploy do contrato
-
-```bash
-# Certifique-se que blockchain/.env tem ALCHEMY_API_KEY e DEPLOYER_PRIVATE_KEY preenchidos
-pnpm --filter @selva/blockchain run deploy
-```
-
-O terminal mostrará:
-```
-SELVATraceability deployed to: 0xABCD...1234
-```
-
-### 5.2 — Atualizar o endereço do contrato
-
-Em `apps/api/.env`:
-```
-CONTRACT_ADDRESS=0xABCD...1234
-BLOCKCHAIN_ENABLED=true
-```
-
-Em `apps/web/.env.local`:
-```
-NEXT_PUBLIC_CONTRACT_ADDRESS=0xABCD...1234
-```
-
-### 5.3 — Reiniciar os servidores
-
-Pare os dois terminais (`Ctrl+C`) e rode novamente:
-```bash
-pnpm --filter @selva/api dev
-pnpm --filter @selva/web dev
-```
-
----
-
-## Referência Rápida
-
-| Serviço | URL |
+| Variável | Valor |
 |---|---|
-| Frontend | http://localhost:3000 |
-| API | http://localhost:3001 |
-| Swagger (docs da API) | http://localhost:3001/api/docs |
-| Supabase (banco) | https://supabase.com/dashboard |
-| Polygonscan Amoy | https://amoy.polygonscan.com |
+| `NEXT_PUBLIC_API_URL` | `http://<IP_ORACLE>` (ou `https://api.selva.eco.br`) |
+| `NEXT_PUBLIC_APP_URL` | `https://<seu-projeto>.vercel.app` |
+| `NEXT_PUBLIC_CONTRACT_ADDRESS` | `0x...` (ou deixe vazio se contrato não implantado) |
+| `NEXT_PUBLIC_ALCHEMY_API_KEY` | Sua chave Alchemy |
 
-| Modo | `BLOCKCHAIN_ENABLED` | Precisa de MATIC? | MetaMask assina? |
-|---|---|---|---|
-| Offline (atual) | `false` | Não | Só na autenticação |
-| Online | `true` | Sim | Em cada transação |
+> Referência completa: `apps/web/.env.production.example`
+
+### 2.3 Fazer o deploy
+
+Clique em **Deploy**. A Vercel irá:
+1. Entrar em `apps/web/`
+2. Rodar `npm install` + `next build`
+3. Publicar em `https://<projeto>.vercel.app`
+
+Todo `git push` na branch principal dispara redeploy automático.
 
 ---
 
-## Problemas Comuns
+## Parte 3 — Sincronizar CORS após deploy
 
-**API não sobe / erro de banco**
-→ Verifique se `DATABASE_URL` está correto no `apps/api/.env`
-→ Verifique conectividade com a internet (Supabase é cloud)
+Com a URL final da Vercel em mãos, atualize no servidor Oracle:
 
-**MetaMask não aparece**
-→ Verifique se a extensão está instalada e desbloqueada
-→ Tente em modo incógnito com a extensão permitida
+```bash
+nano ~/blockchain-system/apps/api/.env
+# Ajuste FRONTEND_URL e APP_URL para a URL real da Vercel
 
-**"Rede incorreta" (NetworkGuard)**
-→ Clique em "Trocar para Polygon Amoy" no overlay que aparece
-→ Ou troque manualmente na MetaMask para a rede Polygon Amoy Testnet
+pm2 restart selva-api
+```
 
-**Erro 401 na API**
-→ Faça logout e autentique novamente em `/auth`
+---
 
-**Banner de sync não desaparece após sincronizar**
-→ Recarregue a página (`F5`) — o banner atualiza no carregamento
+## Parte 4 — Smoke test pós-deploy
+
+Execute nesta ordem:
+
+```bash
+# 1. API respondendo
+curl http://<IP_ORACLE>/api/sync/status
+# Esperado: {"blockchainEnabled":false,"pendingOperations":0}
+
+# 2. Swagger (abrir no navegador)
+# http://<IP_ORACLE>/api/docs
+
+# 3. Frontend carregando
+# https://<projeto>.vercel.app
+
+# 4. Login como admin
+# Abrir o site → conectar carteira (MetaMask) → assinar → deve ir para o dashboard
+# O link "Usuários" no menu lateral confirma que o isAdmin está funcionando
+
+# 5. Cadastrar uma produção (modo offline)
+# Dashboard → Cadastrar produção → preencher → submeter
+# Verificar em: GET http://<IP_ORACLE>/api/products
+
+# 6. Página pública de QR Code (sem login)
+# https://<projeto>.vercel.app/p/<codigo-da-producao>
+```
+
+---
+
+## Parte 5 — Comandos úteis no servidor Oracle
+
+```bash
+# Ver logs em tempo real
+pm2 logs selva-api
+
+# Reiniciar (necessário após alterar .env)
+pm2 restart selva-api
+
+# Status dos processos
+pm2 status
+
+# Rodar migration de emergência
+cd ~/blockchain-system/apps/api
+npx prisma migrate deploy
+pm2 restart selva-api
+
+# Ver banco de dados via Prisma Studio (só localmente, não no servidor)
+cd apps/api && npx prisma studio
+```
+
+---
+
+## Observações importantes
+
+| Ponto | Detalhe |
+|---|---|
+| **Modo offline** | `BLOCKCHAIN_ENABLED=false` — a API funciona sem contrato. Produções ficam `syncStatus=PENDING` até o contrato ser implantado. |
+| **Contrato** | Deploy na Polygon Amoy ainda pendente (aguardando MATIC no faucet). Enquanto isso, use modo offline. |
+| **HTTPS na API** | Para HTTPS, configure um domínio e use `sudo certbot --nginx`. Sem isso, `NEXT_PUBLIC_API_URL` deve ser `http://...`. |
+| **Banco** | O Supabase já está em nuvem. Use sempre `prisma migrate deploy` (não `migrate dev`) em produção. |
+| **Admin** | O admin é definido por `ADMIN_WALLET_ADDRESS` no `.env` da API — qualquer carteira pode ser admin sem precisar estar cadastrada como usuário. |

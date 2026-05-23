@@ -20,6 +20,7 @@ function maskCpf(value: string): string {
 type LookupState = 'idle' | 'searching' | 'found' | 'not-found' | 'error';
 
 interface Recipient {
+  isProducer: any;
   name: string;
   walletAddress: string;
 }
