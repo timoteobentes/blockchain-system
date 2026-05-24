@@ -302,7 +302,7 @@ export default function AuthPage() {
                       Acessar plataforma SELVA
                     </h2>
                     <p style={{ color: 'rgba(255,255,255,.42)', fontSize: 13.5, lineHeight: 1.55 }}>
-                      Conecte sua carteira e assine uma mensagem para autenticar. Nenhuma taxa de gas.
+                      Entre com <strong style={{ color: 'rgba(255,255,255,.7)' }}>e-mail</strong>, <strong style={{ color: 'rgba(255,255,255,.7)' }}>WhatsApp</strong> ou <strong style={{ color: 'rgba(255,255,255,.7)' }}>Google</strong> — sem precisar instalar nada.
                     </p>
                   </div>
 
@@ -322,16 +322,26 @@ export default function AuthPage() {
                         </svg>
                       )
                     }
-                    {busy ? 'Conectando...' : 'Conectar MetaMask'}
+                    {busy ? 'Entrando...' : 'Entrar na plataforma'}
                   </button>
 
                   <div className="sa-how">
                     <p style={{ color: 'rgba(255,255,255,.35)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 10 }}>
                       Como funciona
                     </p>
-                    {['1. Aprovação da conexão no MetaMask', '2. Assinatura de mensagem (sem taxa)', '3. Acesso liberado ao sistema'].map(s => (
+                    {[
+                      '1. Escolha como entrar: e-mail, telefone ou Google',
+                      '2. Confirme seu acesso (código ou clique no link)',
+                      '3. Pronto — sistema liberado sem instalação',
+                    ].map(s => (
                       <p key={s} style={{ color: 'rgba(255,255,255,.32)', fontSize: 13, marginTop: 5 }}>{s}</p>
                     ))}
+                    <p style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,.06)', fontSize: 12.5, color: 'rgba(255,255,255,.22)' }}>
+                      Já usa MetaMask?{' '}
+                      <span style={{ color: 'rgba(195,228,56,.5)' }}>
+                        Também funciona — conecte sua carteira na tela de entrada.
+                      </span>
+                    </p>
                   </div>
                 </div>
               )}
