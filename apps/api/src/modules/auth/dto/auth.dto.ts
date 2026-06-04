@@ -18,6 +18,13 @@ export class VerifySignatureDto {
   signature: string;
 }
 
+export class PrivyLoginDto {
+  @ApiProperty({ description: 'Token JWT emitido pelo Privy após login' })
+  @IsString()
+  @IsNotEmpty()
+  privyToken: string;
+}
+
 export class AuthResponseDto {
   @ApiProperty()
   token: string;

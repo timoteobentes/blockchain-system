@@ -13,7 +13,9 @@ function parseJwt(token: string) {
 }
 
 export interface AuthUser {
-  address: string;
+  privyDid?: string;
+  walletAddress?: string;
+  address?: string;        // alias para walletAddress (compatibilidade)
   isRegistered: boolean;
   isProducer: boolean;
   isAdmin: boolean;
@@ -24,16 +26,19 @@ function userFromToken(token: string): AuthUser | null {
   const p = parseJwt(token);
   if (!p?.sub) return null;
   return {
-    address: p.sub,
+    privyDid: p.privyDid,
+    walletAddress: p.walletAddress,
+    address: p.walletAddress,
     isRegistered: p.isRegistered ?? false,
     isProducer: p.isProducer ?? false,
     isAdmin: p.isAdmin ?? false,
+    name: p.name,
   };
 }
 
 export function useAuth() {
   const router = useRouter();
-  const { login, logout: privyLogout, authenticated, ready } = usePrivy();
+  const { login, logout: privyLogout, authenticated, ready, getAccessToken } = usePrivy();
   const { wallets } = useWallets();
 
   const [user, setUser] = useState<AuthUser | null>(() => {
@@ -48,19 +53,21 @@ export function useAuth() {
     return !!getToken();
   });
   const [initialized, setInitialized] = useState(false);
-  const pendingSign = useRef(false);
+  const pendingLogin = useRef(false);
 
   const primaryWallet = wallets[0];
   const address = primaryWallet?.address as `0x${string}` | undefined;
 
-  // Refresh user state from /me once Privy + wallet are ready
+  // Atualiza estado do usuário com dados frescos do /me
   useEffect(() => {
     if (!ready) return;
     const token = getToken();
-    if (token && address) {
+    if (token) {
       api.users.me()
         .then((u: any) => {
           setUser({
+            privyDid: u.privyDid,
+            walletAddress: u.walletAddress,
             address: u.walletAddress,
             isRegistered: true,
             isProducer: u.isProducer,
@@ -70,59 +77,51 @@ export function useAuth() {
           setIsAuthenticated(true);
         })
         .catch(() => {
-          // 401 handled by api.ts; 404 (admin not in User table) keeps JWT state
+          // 401 tratado pelo api.ts; outros erros mantêm estado do JWT
         })
         .finally(() => setInitialized(true));
-    } else if (!token) {
+    } else {
       setInitialized(true);
     }
-    // if token present but address not yet loaded, wait for next effect run
-  }, [ready, address]);
+  }, [ready]);
 
-  // Sign SELVA nonce with the Privy wallet (embedded or external)
-  const doSign = useCallback(async () => {
-    const wallet = wallets[0];
-    if (!wallet) throw new Error('Carteira não disponível');
+  // Autentica via token Privy (sem assinatura de carteira)
+  const doPrivyLogin = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const addr = wallet.address;
-      const { message } = await api.auth.nonce(addr);
-      const provider = await wallet.getEthereumProvider();
-      const signature = await provider.request({
-        method: 'personal_sign',
-        params: [message, addr],
-      }) as string;
-      const { token, user: userData } = await api.auth.verify(addr, signature);
+      const privyToken = await getAccessToken();
+      if (!privyToken) throw new Error('Não foi possível obter o token de acesso');
+      const { token, user: userData } = await api.auth.privyLogin(privyToken);
       setToken(token);
       setUser(userData as AuthUser);
       setIsAuthenticated(true);
       return userData as AuthUser;
     } catch (e: any) {
-      const msg = e?.shortMessage ?? e?.message ?? 'Falha na autenticação';
+      const msg = e?.message ?? 'Falha na autenticação';
       setError(msg);
       throw e;
     } finally {
       setLoading(false);
     }
-  }, [wallets]);
+  }, [getAccessToken]);
 
-  // Auto-sign nonce after Privy login modal completes
+  // Executa login após Privy completar o modal
   useEffect(() => {
-    if (authenticated && wallets.length > 0 && pendingSign.current && !getToken()) {
-      pendingSign.current = false;
-      doSign().catch(() => {});
+    if (authenticated && pendingLogin.current && !getToken()) {
+      pendingLogin.current = false;
+      doPrivyLogin().catch(() => {});
     }
-  }, [authenticated, wallets, doSign]);
+  }, [authenticated, doPrivyLogin]);
 
-  const connectAndSign = useCallback(async () => {
+  const authenticate = useCallback(async () => {
     if (!authenticated) {
-      pendingSign.current = true;
+      pendingLogin.current = true;
       login();
       return;
     }
-    return doSign();
-  }, [authenticated, login, doSign]);
+    return doPrivyLogin();
+  }, [authenticated, login, doPrivyLogin]);
 
   const logout = useCallback(() => {
     clearToken();
@@ -138,7 +137,7 @@ export function useAuth() {
     error,
     isAuthenticated,
     initialized,
-    connectAndSign,
+    authenticate,
     logout,
     address,
     isConnected: !!address,

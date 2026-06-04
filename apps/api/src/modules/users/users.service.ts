@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { JwtPayload } from '../auth/decorators/current-user.decorator';
 import { UserQueryDto } from './dto/user.dto';
 
 @Injectable()
@@ -13,18 +14,45 @@ export class UsersService {
       this.prisma.user.findMany({
         skip,
         take: limit,
-        orderBy: { onChainAt: 'desc' },
-        select: { id: true, userHash: true, name: true, walletAddress: true, isProducer: true, onChainAt: true },
+        orderBy: { syncedAt: 'desc' },
+        select: { id: true, userHash: true, name: true, walletAddress: true, privyDid: true, email: true, isProducer: true, onChainAt: true },
       }),
       this.prisma.user.count(),
     ]);
     return { data, total, page, limit };
   }
 
+  async findMe(jwtUser: JwtPayload) {
+    const user = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          ...(jwtUser.privyDid ? [{ privyDid: jwtUser.privyDid }] : []),
+          ...(jwtUser.walletAddress ? [{ walletAddress: jwtUser.walletAddress }] : []),
+          // fallback: sub pode ser walletAddress em tokens antigos
+          { walletAddress: jwtUser.sub },
+        ],
+      },
+      select: {
+        id: true,
+        userHash: true,
+        name: true,
+        walletAddress: true,
+        privyDid: true,
+        email: true,
+        isProducer: true,
+        isAdmin: true,
+        onChainAt: true,
+        syncStatus: true,
+      },
+    });
+    if (!user) throw new NotFoundException('Usuário não encontrado');
+    return user;
+  }
+
   async findByAddress(address: string) {
     const user = await this.prisma.user.findUnique({
       where: { walletAddress: address.toLowerCase() },
-      select: { id: true, userHash: true, name: true, walletAddress: true, isProducer: true, onChainAt: true },
+      select: { id: true, userHash: true, name: true, walletAddress: true, privyDid: true, isProducer: true, onChainAt: true },
     });
     if (!user) throw new NotFoundException('Usuário não encontrado');
     return user;

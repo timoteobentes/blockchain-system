@@ -1,14 +1,15 @@
 'use client';
+import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Package, Plus, Users, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 
-const navItems = [
+const navItems: { href: string; label: string; icon: React.FC<any>; adminOnly?: boolean; producerOnly?: boolean }[] = [
   { href: '/dashboard', label: 'Painel inicial', icon: LayoutDashboard },
   { href: '/products', label: 'Produções cadastradas', icon: Package },
-  { href: '/products/new', label: 'Cadastrar produção', icon: Plus, producerOnly: true },
+  { href: '/products/new', label: 'Cadastrar produção', icon: Plus },
   { href: '/admin/users', label: 'Usuários', icon: Users, adminOnly: true },
 ];
 
@@ -33,7 +34,7 @@ export function Sidebar({ onClose }: SidebarProps) {
             </div>
             <div>
               <p style={{ fontWeight: 800, color: '#f0f0ee', fontSize: 15, lineHeight: 1, margin: 0 }}>SELVA</p>
-              <p style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.3)', lineHeight: 1, margin: '3px 0 0' }}>Blockchain System</p>
+              <p style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.3)', lineHeight: 1, margin: '3px 0 0' }}>AMAZONIC BLOCKCHAIN ECOSYSTEM</p>
             </div>
           </Link>
         </div>
@@ -46,7 +47,11 @@ export function Sidebar({ onClose }: SidebarProps) {
           {navItems.map(({ href, label, icon: Icon, producerOnly, adminOnly }) => {
             if (producerOnly && !user?.isProducer && !user?.isAdmin) return null;
             if (adminOnly && !user?.isAdmin) return null;
-            const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+            const active = pathname === href || (
+              href !== '/dashboard' &&
+              pathname.startsWith(href + '/') &&
+              !navItems.some(other => other.href !== href && (pathname === other.href || pathname.startsWith(other.href + '/')))
+            );
             return (
               <Link key={href} href={href} onClick={onClose}
                 className={cn(!active && 'sb-link')}

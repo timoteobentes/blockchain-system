@@ -25,25 +25,27 @@ export class SyncController {
   }
 
   @Post('register')
-  @ApiOperation({ summary: 'Registrar usuário no banco (modo offline)' })
-  registerOffline(@Body() dto: RegisterUserOfflineDto) {
-    return this.syncService.registerUserOffline(dto);
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Registrar usuário no banco após autenticação Privy ou carteira' })
+  registerOffline(@Body() dto: RegisterUserOfflineDto, @CurrentUser() user: JwtPayload) {
+    return this.syncService.registerUserOffline(dto, user);
   }
 
   @Post('product')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Registrar produto no banco (modo offline)' })
-  addProductOffline(@Body() dto: AddProductOfflineDto) {
-    return this.syncService.addProductOffline(dto);
+  addProductOffline(@Body() dto: AddProductOfflineDto, @CurrentUser() user: JwtPayload) {
+    return this.syncService.addProductOffline(dto, user);
   }
 
   @Post('transfer')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Registrar transferência no banco (modo offline)' })
-  transferOffline(@Body() dto: TransferOfflineDto) {
-    return this.syncService.transferOffline(dto);
+  transferOffline(@Body() dto: TransferOfflineDto, @CurrentUser() user: JwtPayload) {
+    return this.syncService.transferOffline(dto, user);
   }
 
   @Patch('confirm/:id')

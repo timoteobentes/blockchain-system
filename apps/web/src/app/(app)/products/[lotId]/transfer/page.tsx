@@ -102,7 +102,6 @@ export default function TransferPage() {
       try {
         await api.sync.transferOffline({
           lotId: lotId as string,
-          fromAddress: address!,
           toAddress: recipient.walletAddress,
         });
         setOfflineResult('success');

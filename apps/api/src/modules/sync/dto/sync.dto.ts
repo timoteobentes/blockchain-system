@@ -2,8 +2,7 @@ import { IsString, IsNotEmpty, IsNumber, IsOptional, IsEthereumAddress, Min } fr
 
 export class RegisterUserOfflineDto {
   @IsString() @IsNotEmpty() name: string;
-  @IsString() @IsNotEmpty() cpf: string;
-  @IsString() @IsNotEmpty() walletAddress: string;
+  @IsString() @IsOptional() cpf?: string;
 }
 
 export class AddProductOfflineDto {
@@ -12,12 +11,10 @@ export class AddProductOfflineDto {
   @IsString() @IsNotEmpty() origin: string;
   @IsString() @IsOptional() originType?: string;
   @IsString() @IsNotEmpty() documentHash: string;
-  @IsString() @IsNotEmpty() producerAddress: string;
 }
 
 export class TransferOfflineDto {
   @IsString() @IsNotEmpty() lotId: string;
-  @IsString() @IsNotEmpty() fromAddress: string;
   @IsString() @IsNotEmpty() toAddress: string;
 }
 

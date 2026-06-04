@@ -7,6 +7,8 @@ import { Sidebar } from '@/components/Sidebar';
 import { WalletStatus } from '@/components/WalletStatus';
 import { NetworkGuard } from '@/components/NetworkGuard';
 import { SyncBanner } from '@/components/SyncBanner';
+import { ModeIndicator } from '@/components/ModeIndicator';
+import { NavigationProgress } from '@/components/NavigationProgress';
 import { useAuth } from '@/hooks/useAuth';
 
 const { Sider } = Layout;
@@ -56,6 +58,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       }}
     >
       <NetworkGuard>
+        <NavigationProgress />
         <div style={{ minHeight: '100vh', background: '#080a05', position: 'relative' }}>
           {/* Mobile backdrop */}
           {isMobile && sidebarVisible && (
@@ -86,7 +89,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               transition: 'width 0.2s',
             }}
           >
-            <Sidebar onClose={() => setCollapsed(true)} />
+            <Sidebar onClose={() => { if (isMobile) setCollapsed(true); }} />
           </Sider>
 
           {/* Content area */}
@@ -122,6 +125,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 }
               </button>
               <div style={{ flex: 1 }} />
+              <ModeIndicator compact />
               <WalletStatus />
             </header>
 

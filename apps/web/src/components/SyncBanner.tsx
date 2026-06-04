@@ -81,10 +81,11 @@ export function SyncBanner() {
     await signOp(ops[0]);
   };
 
-  if (!status) return null;
+  // Sem dados ainda ou blockchain desabilitado (modo digital normal) → sem banner
+  if (!status || !status.blockchainEnabled) return null;
 
   // Blockchain habilitado e sem pendências → sem banner
-  if (status.blockchainEnabled && status.pendingOperations === 0) return null;
+  if (status.pendingOperations === 0 && !done) return null;
 
   if (done) {
     return (
@@ -97,29 +98,21 @@ export function SyncBanner() {
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 px-4 py-8 text-sm" style={{ padding: "6px" }}>
+    <div className="flex items-center gap-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-sm" style={{ padding: '10px 14px' }}>
       <AlertTriangle className="h-4 w-4 shrink-0 text-yellow-400" />
       <div className="flex-1 min-w-0">
-        {!status.blockchainEnabled ? (
-          <span className="text-yellow-300">
-            <strong>Sem internet</strong> — dados salvos no aparelho.
-          </span>
-        ) : (
-          <span className="text-yellow-300">
-            <strong>{status.pendingOperations} operação(ões) pendente(s)</strong> de sincronização com a blockchain.
-          </span>
-        )}
+        <span className="text-yellow-300">
+          <strong>{status.pendingOperations} operação(ões) pendente(s)</strong> de sincronização com a blockchain.
+        </span>
         {currentOp && (
           <p className="text-yellow-400/70 text-xs mt-0.5">
-            Assinando: {currentOp.type} — confirme no MetaMask...
+            Assinando: {currentOp.type} — confirme na carteira...
           </p>
         )}
       </div>
-      {status.pendingOperations > 0 && (
-        <Button size="sm" variant="ghost" onClick={handleSync} loading={syncing} className="cursor-pointer" style={{ padding: "4px 12px" }}>
-          <RefreshCw className="h-3 w-3" /> Enviar dados salvos
-        </Button>
-      )}
+      <Button size="sm" variant="ghost" onClick={handleSync} loading={syncing} className="cursor-pointer" style={{ padding: '4px 12px' }}>
+        <RefreshCw className="h-3 w-3" /> Sincronizar
+      </Button>
     </div>
   );
 }

@@ -2,11 +2,9 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, Loader2, CheckCircle2, Wifi, WifiOff } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
-import { SELVA_ABI, CONTRACT_ADDRESS } from '@/contracts/abi';
 
 const G = '#c3e438';
 
@@ -48,7 +46,7 @@ const css = `
   .sa-inp {
     width:100%; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12);
     border-radius:10px; padding:13px 16px; color:#f0f0f0; font-size:15px; outline:none;
-    transition:border-color .2s; font-family:inherit;
+    transition:border-color .2s; font-family:inherit; box-sizing:border-box;
   }
   .sa-inp::placeholder { color:rgba(255,255,255,.28); }
   .sa-inp:focus { border-color:${G}; }
@@ -87,7 +85,11 @@ const css = `
   .sa-alert-warn { background:rgba(195,228,56,.06); border:1px solid rgba(195,228,56,.18); color:rgba(195,228,56,.85); }
   .sa-alert-ok { background:rgba(100,220,100,.08); border:1px solid rgba(100,220,100,.25); color:#7dde7d; }
 
-  .sa-how { margin-top:20px; padding:16px; background:rgba(195,228,56,.03); border:1px solid rgba(195,228,56,.07); border-radius:10px; }
+  .sa-mode {
+    display:flex; align-items:center; gap:7px; padding:7px 13px; border-radius:20px;
+    font-size:12px; font-weight:600; margin-bottom:22px;
+  }
+  .sa-mode-dot { width:7px; height:7px; border-radius:50%; }
 
   @keyframes sa-spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
   .sa-spin { animation:sa-spin .9s linear infinite; }
@@ -98,7 +100,7 @@ const css = `
     .sa-brand-feats { display:none; }
     .sa-brand-quote { display:none; }
     .sa-form { min-height:auto; padding:24px 20px 48px; }
-    .sa-card { padding:32px 24px; }
+    .sa-card { padding:28px 20px; }
   }
   @media(min-width:768px) {
     .sa-brand-mobile { display:none; }
@@ -107,37 +109,41 @@ const css = `
 
 export default function AuthPage() {
   const router = useRouter();
-  const { isAuthenticated, connectAndSign, loading, error, user, address } = useAuth();
-  const [step, setStep] = useState<'connect' | 'register'>('connect');
+  const { isAuthenticated, authenticate, loading, error, user } = useAuth();
+  const [step, setStep] = useState<'entrar' | 'cadastrar'>('entrar');
   const [name, setName] = useState('');
   const [cpfRaw, setCpfRaw] = useState('');
-  const [txError, setTxError] = useState('');
+  const [cpfOpcional, setCpfOpcional] = useState(false);
   const [registerStatus, setRegisterStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [blockchainEnabled, setBlockchainEnabled] = useState(false);
-
-  const { writeContractAsync, data: txHash } = useWriteContract();
-  const { isLoading: txPending, isSuccess: txSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+  const [registerError, setRegisterError] = useState('');
+  const [isOnline, setIsOnline] = useState(true);
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
-    api.sync.status().then(s => setBlockchainEnabled(s.blockchainEnabled)).catch(() => {});
+    setIsOnline(navigator.onLine);
+    const on = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
-      if (user?.isRegistered) router.replace('/dashboard');
-      else setStep('register');
+      if (user?.isRegistered) {
+        setRedirecting(true);
+        router.replace('/dashboard');
+      } else {
+        setStep('cadastrar');
+      }
     }
   }, [isAuthenticated, user, router]);
 
-  useEffect(() => {
-    if (txSuccess) router.replace('/dashboard');
-  }, [txSuccess, router]);
-
-  const handleConnect = async () => {
+  const handleEntrar = async () => {
     try {
-      const u = await connectAndSign();
+      const u = await authenticate();
       if (u?.isRegistered) router.replace('/dashboard');
-      else setStep('register');
+      else setStep('cadastrar');
     } catch {}
   };
 
@@ -145,39 +151,56 @@ export default function AuthPage() {
     setCpfRaw(e.target.value.replace(/\D/g, '').slice(0, 11));
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleCadastrar = async (e: React.FormEvent) => {
     e.preventDefault();
-    setTxError('');
+    setRegisterError('');
     setRegisterStatus('loading');
     try {
-      if (!blockchainEnabled || !CONTRACT_ADDRESS) {
-        await api.sync.registerOffline({ name, cpf: cpfRaw, walletAddress: address! });
-        setRegisterStatus('success');
-        setTimeout(() => router.replace('/dashboard'), 1500);
-      } else {
-        await writeContractAsync({
-          address: CONTRACT_ADDRESS as `0x${string}`,
-          abi: SELVA_ABI,
-          functionName: 'registerUser',
-          args: [name, cpfRaw],
-        });
-        setRegisterStatus('success');
-      }
+      await api.sync.registerOffline({
+        name,
+        cpf: cpfOpcional ? undefined : cpfRaw || undefined,
+      });
+      setRegisterStatus('success');
+      setRedirecting(true);
+      router.replace('/dashboard');
     } catch (err: any) {
-      const msg = err?.shortMessage ?? err?.message ?? 'Erro no registro';
-      setTxError(msg);
+      setRegisterError(err?.message ?? 'Erro no cadastro');
       setRegisterStatus('error');
     }
   };
 
-  const busy = loading || registerStatus === 'loading' || txPending;
+  const busy = loading || registerStatus === 'loading';
+
+  if (redirecting) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#070a04', gap: 20 }}>
+        <style>{`@keyframes sa-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+        <div style={{ width: 52, height: 52, borderRadius: '50%', border: '3px solid rgba(195,228,56,0.2)', borderTopColor: '#c3e438', animation: 'sa-spin 0.8s linear infinite' }} />
+        <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, margin: 0 }}>Acessando o painel...</p>
+      </div>
+    );
+  }
+
+  const ModeTag = () => {
+    if (!isOnline) return (
+      <div className="sa-mode" style={{ background: 'rgba(251,191,36,.08)', border: '1px solid rgba(251,191,36,.2)' }}>
+        <div className="sa-mode-dot" style={{ background: '#fbbf24' }} />
+        <span style={{ color: '#fbbf24' }}>Sem conexão — modo local</span>
+      </div>
+    );
+    return (
+      <div className="sa-mode" style={{ background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.18)' }}>
+        <div className="sa-mode-dot" style={{ background: '#60a5fa' }} />
+        <span style={{ color: '#60a5fa' }}>Modo Digital — dados no sistema</span>
+      </div>
+    );
+  };
 
   return (
     <>
       <style>{css}</style>
-
       <div className="sa">
-        {/* ── Brand panel ─────────────────────────── */}
+        {/* Painel de apresentação */}
         <aside className="sa-brand">
           <div className="sa-bc">
             <div>
@@ -185,30 +208,21 @@ export default function AuthPage() {
               <img
                 src="/logo-selva.png"
                 alt="SELVA"
-                style={{
-                  width: 200,
-                  filter: 'grayscale(1) contrast(1.8) invert(1) drop-shadow(0 0 14px rgba(195,228,56,.35))',
-                  marginBottom: 40,
-                }}
+                style={{ width: 200, filter: 'grayscale(1) contrast(1.8) invert(1) drop-shadow(0 0 14px rgba(195,228,56,.35))', marginBottom: 40 }}
               />
             </div>
-
             <div style={{ flex: 1 }}>
-              {/* <p style={{ color: G, fontWeight: 700, fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', marginBottom: 14 }}>
-                Cadeia Produtiva Amazônica
-              </p> */}
               <h1 style={{ color: '#f2f2f0', fontSize: 32, fontWeight: 800, lineHeight: 1.2, marginBottom: 14 }}>
                 Rastreabilidade da produção <span style={{ color: G }}>Amazônica,</span> do campo ao mercado
               </h1>
               <p style={{ color: 'rgba(255,255,255,.48)', fontSize: 14.5, lineHeight: 1.65, marginBottom: 36 }}>
-                Organize dados de produtores, lotes e documentos da cadeia produtiva em uma plataforma digital com verificação por QR Code e registro em blockchain.
+                Organize os dados da sua produção, comprove a origem e conecte sua produção ao mercado com um sistema digital simples e seguro.
               </p>
-
               <div className="sa-brand-feats" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {[
-                  ['Cadastro produtivo organizado', 'produtores, propriedades e informações essenciais reunidas em uma base digital'],
-                  ['Origem verificável por QR Code', 'lotes vinculados a registros, documentos e evidências da produção'],
-                  ['Governança para acesso a mercado', 'dados estruturados para fortalecer associações, compradores, parceiros e programas de fomento'],
+                  ['Cadastro simples, no celular', 'Registre suas informações em poucos minutos, sem instalar nada'],
+                  ['Comprove a origem da sua produção', 'QR Code vinculado ao seu registro — escaneável por compradores e parceiros'],
+                  ['Conecte-se ao mercado', 'Dados organizados para associações, compradores e programas de apoio ao produtor'],
                 ].map(([title, desc]) => (
                   <div className="sa-feat" key={title}>
                     <div className="sa-fi">
@@ -224,11 +238,7 @@ export default function AuthPage() {
                 ))}
               </div>
             </div>
-
-            <div
-              className="sa-brand-quote"
-              style={{ paddingTop: 28, borderTop: '1px solid rgba(255,255,255,.07)', marginTop: 32 }}
-            >
+            <div className="sa-brand-quote" style={{ paddingTop: 28, borderTop: '1px solid rgba(255,255,255,.07)', marginTop: 32 }}>
               <p style={{ color: 'rgba(255,255,255,.3)', fontSize: 13, fontStyle: 'italic', lineHeight: 1.6 }}>
                 &quot;Conectando a floresta ao mercado global com transparência e tecnologia.&quot;
               </p>
@@ -239,59 +249,49 @@ export default function AuthPage() {
           </div>
         </aside>
 
-        {/* ── Form panel ──────────────────────────── */}
+        {/* Painel do formulário */}
         <main className="sa-form">
           <div className="sa-fw">
-
-            {/* Mobile compact header */}
+            {/* Cabeçalho mobile */}
             <div className="sa-brand-mobile" style={{ textAlign: 'center', marginBottom: 28 }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/logo-selva.png"
-                alt="SELVA"
-                style={{ width: 64, filter: 'grayscale(1) contrast(1.8) invert(1)', margin: '0 auto 10px' }}
-              />
+              <img src="/logo-selva.png" alt="SELVA" style={{ width: 64, filter: 'grayscale(1) contrast(1.8) invert(1)', margin: '0 auto 10px' }} />
               <p style={{ color: 'rgba(255,255,255,.4)', fontSize: 13 }}>Rastreabilidade Amazônica</p>
             </div>
 
-            {/* Step indicator */}
+            <ModeTag />
+
+            {/* Indicador de etapas */}
             <div className="sa-step">
-              <div className={`sa-dot ${step === 'connect' ? 'sa-dot-active' : 'sa-dot-done'}`}>
-                {step === 'register' ? (
+              <div className={`sa-dot ${step === 'entrar' ? 'sa-dot-active' : 'sa-dot-done'}`}>
+                {step === 'cadastrar' ? (
                   <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
                     <path d="M1 5l3.5 3.5L11 1" stroke={G} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 ) : '1'}
               </div>
-              <span style={{ fontSize: 12, color: step === 'connect' ? '#f0f0f0' : 'rgba(195,228,56,.7)', fontWeight: step === 'connect' ? 600 : 400 }}>
-                Conectar
+              <span style={{ fontSize: 12, color: step === 'entrar' ? '#f0f0f0' : 'rgba(195,228,56,.7)', fontWeight: step === 'entrar' ? 600 : 400 }}>
+                Entrar
               </span>
               <div className="sa-sep" />
-              <div className={`sa-dot ${step === 'register' ? 'sa-dot-active' : 'sa-dot-idle'}`}>
+              <div className={`sa-dot ${step === 'cadastrar' ? 'sa-dot-active' : 'sa-dot-idle'}`}>
                 {registerStatus === 'success' ? (
                   <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
                     <path d="M1 5l3.5 3.5L11 1" stroke={G} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 ) : '2'}
               </div>
-              <span style={{ fontSize: 12, color: step === 'register' ? '#f0f0f0' : 'rgba(255,255,255,.25)', fontWeight: step === 'register' ? 600 : 400 }}>
-                Registrar
+              <span style={{ fontSize: 12, color: step === 'cadastrar' ? '#f0f0f0' : 'rgba(255,255,255,.25)', fontWeight: step === 'cadastrar' ? 600 : 400 }}>
+                Cadastrar
               </span>
             </div>
 
-            {/* Card */}
             <div className="sa-card">
-
-              {/* ── Step: Connect ── */}
-              {step === 'connect' && (
+              {/* Etapa 1: Entrar */}
+              {step === 'entrar' && (
                 <div>
                   <div style={{ textAlign: 'center', marginBottom: 28 }}>
-                    <div style={{
-                      width: 54, height: 54,
-                      background: 'rgba(195,228,56,.1)', border: '1px solid rgba(195,228,56,.22)',
-                      borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      margin: '0 auto 18px',
-                    }}>
+                    <div style={{ width: 54, height: 54, background: 'rgba(195,228,56,.1)', border: '1px solid rgba(195,228,56,.22)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
                       <svg width="26" height="22" viewBox="0 0 28 24" fill="none">
                         <rect x="1" y="5" width="26" height="16" rx="3" stroke={G} strokeWidth="2" />
                         <path d="M1 10h26" stroke={G} strokeWidth="2" />
@@ -299,10 +299,10 @@ export default function AuthPage() {
                       </svg>
                     </div>
                     <h2 style={{ color: '#f2f2f0', fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
-                      Acessar plataforma SELVA
+                      Acessar a plataforma SELVA
                     </h2>
                     <p style={{ color: 'rgba(255,255,255,.42)', fontSize: 13.5, lineHeight: 1.55 }}>
-                      Entre com <strong style={{ color: 'rgba(255,255,255,.7)' }}>e-mail</strong>, <strong style={{ color: 'rgba(255,255,255,.7)' }}>WhatsApp</strong> ou <strong style={{ color: 'rgba(255,255,255,.7)' }}>Google</strong> — sem precisar instalar nada.
+                      Entre com seu <strong style={{ color: 'rgba(255,255,255,.7)' }}>e-mail</strong>, <strong style={{ color: 'rgba(255,255,255,.7)' }}>celular (WhatsApp)</strong> ou <strong style={{ color: 'rgba(255,255,255,.7)' }}>conta Google</strong> — sem precisar instalar nada.
                     </p>
                   </div>
 
@@ -313,77 +313,65 @@ export default function AuthPage() {
                     </div>
                   )}
 
-                  <button className="sa-btn" onClick={handleConnect} disabled={busy}>
+                  {!isOnline && (
+                    <div className="sa-alert sa-alert-warn">
+                      <WifiOff size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+                      Você está sem conexão com a internet. Conecte-se para acessar a plataforma.
+                    </div>
+                  )}
+
+                  <button className="sa-btn" onClick={handleEntrar} disabled={busy || !isOnline}>
                     {busy
                       ? <Loader2 size={18} className="sa-spin" />
-                      : (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                          <path d="M21 12V7a2 2 0 00-2-2H5a2 2 0 00-2 2v5m18 0v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5m18 0H3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                        </svg>
-                      )
+                      : <Wifi size={18} />
                     }
-                    {busy ? 'Entrando...' : 'Entrar na plataforma'}
+                    {busy ? 'Acessando...' : 'Entrar na plataforma'}
                   </button>
 
-                  <div className="sa-how">
+                  <div style={{ marginTop: 20, padding: 16, background: 'rgba(195,228,56,.03)', border: '1px solid rgba(195,228,56,.07)', borderRadius: 10 }}>
                     <p style={{ color: 'rgba(255,255,255,.35)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 10 }}>
                       Como funciona
                     </p>
                     {[
-                      '1. Escolha como entrar: e-mail, telefone ou Google',
-                      '2. Confirme seu acesso (código ou clique no link)',
-                      '3. Pronto — sistema liberado sem instalação',
+                      '1. Escolha como entrar: e-mail, celular ou Google',
+                      '2. Confirme seu acesso — código enviado ou clique no link',
+                      '3. Pronto — sistema liberado, sem instalar nada',
                     ].map(s => (
                       <p key={s} style={{ color: 'rgba(255,255,255,.32)', fontSize: 13, marginTop: 5 }}>{s}</p>
                     ))}
-                    <p style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,.06)', fontSize: 12.5, color: 'rgba(255,255,255,.22)' }}>
-                      Já usa MetaMask?{' '}
-                      <span style={{ color: 'rgba(195,228,56,.5)' }}>
-                        Também funciona — conecte sua carteira na tela de entrada.
-                      </span>
-                    </p>
                   </div>
                 </div>
               )}
 
-              {/* ── Step: Register ── */}
-              {step === 'register' && (
-                <form onSubmit={handleRegister}>
-                  <div style={{ textAlign: 'center', marginBottom: 28 }}>
-                    <div style={{
-                      width: 54, height: 54,
-                      background: 'rgba(195,228,56,.1)', border: '1px solid rgba(195,228,56,.22)',
-                      borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      margin: '0 auto 18px',
-                    }}>
+              {/* Etapa 2: Cadastrar */}
+              {step === 'cadastrar' && (
+                <form onSubmit={handleCadastrar}>
+                  <div style={{ textAlign: 'center', marginBottom: 24 }}>
+                    <div style={{ width: 54, height: 54, background: 'rgba(195,228,56,.1)', border: '1px solid rgba(195,228,56,.22)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
                       <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                         <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke={G} strokeWidth="2" strokeLinecap="round" />
                         <circle cx="12" cy="7" r="4" stroke={G} strokeWidth="2" />
                       </svg>
                     </div>
-                    <h2 style={{ color: '#f2f2f0', fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
-                      Criar sua conta
+                    <h2 style={{ color: '#f2f2f0', fontSize: 20, fontWeight: 700, marginBottom: 6 }}>
+                      Criar seu cadastro
                     </h2>
-                    <p style={{ color: 'rgba(255,255,255,.42)', fontSize: 13.5 }}>
-                      {blockchainEnabled
-                        ? 'Registre-se no contrato inteligente Polygon'
-                        : 'Registre-se — sincronização com blockchain em breve'}
+                    <p style={{ color: 'rgba(255,255,255,.42)', fontSize: 13 }}>
+                      Dados básicos para começar — você completa o restante depois.
                     </p>
                   </div>
 
-                  {/* Success message */}
                   {registerStatus === 'success' && (
-                    <div className="sa-alert sa-alert-ok" style={{ marginBottom: 20 }}>
+                    <div className="sa-alert sa-alert-ok" style={{ marginBottom: 16 }}>
                       <CheckCircle2 size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-                      Conta criada com sucesso! Redirecionando...
+                      Cadastro criado com sucesso! Redirecionando...
                     </div>
                   )}
 
-                  {/* Error message */}
-                  {txError && registerStatus === 'error' && (
+                  {registerError && registerStatus === 'error' && (
                     <div className="sa-alert sa-alert-err">
                       <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-                      {txError}
+                      {registerError}
                     </div>
                   )}
 
@@ -391,7 +379,7 @@ export default function AuthPage() {
                     <>
                       <div style={{ marginBottom: 14 }}>
                         <label style={{ display: 'block', color: 'rgba(255,255,255,.55)', fontSize: 13, fontWeight: 500, marginBottom: 7 }}>
-                          Nome completo
+                          Nome completo *
                         </label>
                         <input
                           className="sa-inp"
@@ -404,43 +392,49 @@ export default function AuthPage() {
                         />
                       </div>
 
-                      <div style={{ marginBottom: 20 }}>
+                      <div style={{ marginBottom: 8 }}>
                         <label style={{ display: 'block', color: 'rgba(255,255,255,.55)', fontSize: 13, fontWeight: 500, marginBottom: 7 }}>
-                          CPF
+                          CPF {cpfOpcional ? <span style={{ color: 'rgba(255,255,255,.3)', fontWeight: 400 }}>(opcional)</span> : ''}
                         </label>
-                        <input
-                          className="sa-inp"
-                          placeholder="000.000.000-00"
-                          value={formatCpf(cpfRaw)}
-                          onChange={handleCpfChange}
-                          required
-                          autoComplete="off"
-                          inputMode="numeric"
-                          disabled={busy}
-                        />
+                        {!cpfOpcional && (
+                          <input
+                            className="sa-inp"
+                            placeholder="000.000.000-00"
+                            value={formatCpf(cpfRaw)}
+                            onChange={handleCpfChange}
+                            autoComplete="off"
+                            inputMode="numeric"
+                            disabled={busy}
+                          />
+                        )}
                       </div>
 
-                      {!blockchainEnabled && (
-                        <div className="sa-alert sa-alert-warn">
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
-                            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-                            <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                          </svg>
-                          Modo offline — registro salvo localmente e sincronizado com a blockchain quando disponível.
-                        </div>
-                      )}
-
-                      <button className="sa-btn" type="submit" disabled={!name || cpfRaw.length < 11 || busy}>
-                        {busy && <Loader2 size={18} className="sa-spin" />}
-                        {busy ? 'Registrando...' : (blockchainEnabled ? 'Registrar na blockchain' : 'Criar conta')}
+                      <button
+                        type="button"
+                        onClick={() => { setCpfOpcional(!cpfOpcional); setCpfRaw(''); }}
+                        style={{ background: 'none', border: 'none', color: 'rgba(195,228,56,.5)', fontSize: 12, cursor: 'pointer', padding: 0, marginBottom: 18, textDecoration: 'underline' }}
+                      >
+                        {cpfOpcional ? 'Tenho CPF, quero informar' : 'Não tenho CPF agora, informar depois'}
                       </button>
+
+                      <button
+                        className="sa-btn"
+                        type="submit"
+                        disabled={!name.trim() || busy}
+                      >
+                        {busy && <Loader2 size={18} className="sa-spin" />}
+                        {busy ? 'Cadastrando...' : 'Criar meu cadastro'}
+                      </button>
+
+                      <p style={{ textAlign: 'center', color: 'rgba(255,255,255,.25)', fontSize: 12, marginTop: 14 }}>
+                        Você poderá adicionar mais informações da sua produção depois.
+                      </p>
                     </>
                   )}
                 </form>
               )}
             </div>
 
-            {/* Footer */}
             <p style={{ textAlign: 'center', color: 'rgba(255,255,255,.18)', fontSize: 12, marginTop: 20, lineHeight: 1.7 }}>
               Ao continuar você concorda com os{' '}
               <a

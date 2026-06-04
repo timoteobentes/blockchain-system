@@ -415,3 +415,68 @@ Antes de continuar qualquer tarefa, verificar que o arquivo `apps/api/.env` cont
 ---
 
 _Última atualização: 2026-05-22 — Prioridades P1–P5 concluídas. Pendentes: P5.6–P5.7 (deploy Oracle/smoke test), P6 (Privy / sem MetaMask), P7 (coleta gradual de dados do produtor). Próximo passo recomendado: P6.1 (avaliar Privy) ou P5.6 (deploy Oracle Cloud)._
+
+---
+
+## NOVA DEMANDA — 2026-05-29
+
+> Plataforma usada por produtores rurais → comunicação acessível, sem jargão técnico.
+
+### NOVO-1 — Auth sem carteira obrigatória + 3 Modos de Operação
+
+Privy já está integrado (`@privy-io/react-auth`). O fluxo atual exige assinatura de nonce com carteira mesmo para usuários de e-mail.
+Objetivo: auth via token Privy (sem assinatura de carteira); carteira é opcional para blockchain.
+
+**3 Modos:**
+| Código | Nome para o produtor | Indicador | Descrição |
+|---|---|---|---|
+| `OFFLINE` | Sem Conexão | 🟡 Amarelo | Sem internet — salva no dispositivo |
+| `DIGITAL` | Modo Digital | 🔵 Azul | Online + Supabase, sem blockchain |
+| `VERIFIED` | Modo Verificado | 🟢 Verde | Online + carteira + blockchain |
+
+- [x] **N1.1** — Backend: instalar `jose` na API (verificar JWTs Privy via JWKS)
+- [x] **N1.2** — Backend: schema Prisma — adicionar `privyDid String? @unique`, tornar `walletAddress`/`cpf`/`userHash`/`onChainAt` opcionais
+- [x] **N1.3** — Backend: migration `add_privy_auth` (via `prisma db push`)
+- [x] **N1.4** — Backend: `auth.service.ts` — `loginWithPrivy()` via JWKS Privy
+- [x] **N1.5** — Backend: endpoint `POST /api/auth/privy-login`
+- [x] **N1.6** — Frontend: `api.ts` — `auth.privyLogin()` + `sync.registerOffline` atualizado
+- [x] **N1.7** — Frontend: `useAuth.ts` — usa `getAccessToken()` em vez de assinatura de nonce
+- [x] **N1.8** — Frontend: `auth/page.tsx` — linguagem acessível, sem jargão de carteira, CPF opcional
+- [x] **N1.9** — Frontend: hook `useConnectionMode()` — detecta OFFLINE / DIGITAL / VERIFIED
+- [x] **N1.10** — Frontend: componente `ModeIndicator` — indicador de modo no header
+- [x] **N1.11** — Frontend: `WalletStatus` mostra nome do usuário quando sem carteira
+- [x] **N1.12** — Frontend: `products/new` — remove dependência de carteira, usa JWT para identidade
+- [x] **N1.13** — Backend: `sync.service` — `addProductOffline` usa JWT como produtor (sem req. de endereço)
+- [ ] **⚠️ PENDENTE CONFIG** — Adicionar `NEXT_PUBLIC_PRIVY_APP_ID` no `apps/web/.env.local` e `PRIVY_APP_ID` no `apps/api/.env` (obter em https://dashboard.privy.io)
+
+### NOVO-2 — Formulário progressivo do produtor
+
+Coletar dados em etapas, não tudo de uma vez. Baseado no P7 (que estava pendente).
+
+- [ ] **N2.1** — Backend: expandir schema User (endereço, município, estado, associação, CNPJ, o que produz, cadeia produtiva, local de origem)
+- [ ] **N2.2** — Backend: expandir schema Product (preço, unidade, onde vende, para quem vende)
+- [ ] **N2.3** — Backend: `PATCH /api/users/profile` para salvar perfil em etapas
+- [ ] **N2.4** — Frontend: `/perfil` — formulário multi-step:
+  - Etapa 1: Identificação (Nome, CPF opcional, telefone)
+  - Etapa 2: Localização (Município, Estado, Local de origem da produção)
+  - Etapa 3: Vínculo (Associação/Cooperativa, tem CNPJ? qual?)
+  - Etapa 4: O que produz (tipo de produto, cadeia de produção)
+  - Etapa 5: Mercado (onde vende, para quem, preço médio)
+- [ ] **N2.5** — Frontend: banner "complete seu perfil" no dashboard
+- [ ] **N2.6** — Frontend: cadastro de produção inclui campos de preço e destino
+
+### NOVO-3 — Dashboard centrado nas 4 perguntas do produtor
+
+O QUE VENDE? POR QUANTO VENDE? ONDE VENDE? PARA QUEM VENDE?
+
+- [ ] **N3.1** — Frontend: seção de resposta rápida no dashboard com as 4 perguntas
+- [ ] **N3.2** — Frontend: linguagem simplificada em todo o sistema (sem "blockchain", "hash", "nonce")
+- [ ] **N3.3** — Frontend: indicador de modo em todas as telas
+
+### NOVO-4 — Responsividade e Segurança
+
+- [ ] **N4.1** — Mobile-first: auditoria em todas as páginas (celular = principal dispositivo de produtores)
+- [ ] **N4.2** — Sidebar colapsável/drawer em mobile
+- [ ] **N4.3** — Validação de inputs (frontend: zod; backend: class-validator)
+- [ ] **N4.4** — Rate limiting nos endpoints de auth
+- [ ] **N4.5** — Sanitização de dados e headers de segurança

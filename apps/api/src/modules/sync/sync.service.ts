@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ethers } from 'ethers';
+import { JwtPayload } from '../auth/decorators/current-user.decorator';
 import {
   RegisterUserOfflineDto,
   AddProductOfflineDto,
@@ -35,86 +36,114 @@ export class SyncService {
     });
   }
 
-  async registerUserOffline(dto: RegisterUserOfflineDto) {
-    const addr = dto.walletAddress.toLowerCase();
+  async registerUserOffline(dto: RegisterUserOfflineDto, jwtUser: JwtPayload) {
+    const privyDid = jwtUser.privyDid;
+    const walletAddress = jwtUser.walletAddress?.toLowerCase();
 
-    const existing = await this.prisma.user.findUnique({ where: { walletAddress: addr } });
+    if (!privyDid && !walletAddress) {
+      throw new BadRequestException('Identificador de usuário não encontrado no token');
+    }
+
+    // Verifica se já existe por privyDid ou walletAddress
+    const existing = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          ...(privyDid ? [{ privyDid }] : []),
+          ...(walletAddress ? [{ walletAddress }] : []),
+        ],
+      },
+    });
     if (existing) throw new BadRequestException('Usuário já registrado');
 
-    const userHash = ethers.keccak256(ethers.toUtf8Bytes(`offline:${addr}:${Date.now()}`));
+    const identifier = privyDid ?? walletAddress!;
+    const userHash = ethers.keccak256(ethers.toUtf8Bytes(`selva:${identifier}:${Date.now()}`));
 
-    const [user, op] = await this.prisma.$transaction([
-      this.prisma.user.create({
-        data: {
-          userHash,
-          name: dto.name,
-          cpf: dto.cpf,
-          walletAddress: addr,
-          isProducer: false,
-          syncStatus: 'PENDING',
-          onChainAt: new Date(),
-        },
-      }),
-      this.prisma.pendingOperation.create({
+    const user = await this.prisma.user.create({
+      data: {
+        userHash,
+        name: dto.name,
+        cpf: dto.cpf,
+        privyDid,
+        walletAddress,
+        isProducer: false,
+        syncStatus: walletAddress ? 'PENDING' : 'SYNCED',
+      },
+    });
+
+    // Só cria operação pendente de blockchain se há carteira vinculada
+    if (walletAddress) {
+      await this.prisma.pendingOperation.create({
         data: {
           type: 'REGISTER_USER',
           params: { name: dto.name, cpf: dto.cpf },
-          userAddress: addr,
-          refId: addr,
+          userAddress: walletAddress,
+          refId: walletAddress,
           status: 'PENDING',
         },
-      }),
-    ]);
+      });
+    }
 
-    return { user, pendingOpId: op.id, syncStatus: 'PENDING' };
+    return { user, syncStatus: user.syncStatus };
   }
 
-  async addProductOffline(dto: AddProductOfflineDto) {
-    const producer = dto.producerAddress.toLowerCase();
-
+  async addProductOffline(dto: AddProductOfflineDto, jwtUser: JwtPayload) {
     const existing = await this.prisma.product.findUnique({ where: { lotId: dto.lotId } });
     if (existing) throw new BadRequestException('Produção já registrada');
 
-    // Buscar nome do produtor
-    const producerUser = await this.prisma.user.findUnique({
-      where: { walletAddress: producer },
-      select: { name: true },
+    // Busca o produtor pelo privyDid ou walletAddress do JWT
+    const producerUser = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          ...(jwtUser.privyDid ? [{ privyDid: jwtUser.privyDid }] : []),
+          ...(jwtUser.walletAddress ? [{ walletAddress: jwtUser.walletAddress }] : []),
+          { walletAddress: jwtUser.sub },
+        ],
+      },
+      select: { id: true, name: true, walletAddress: true, privyDid: true },
     });
-    const producerName = producerUser?.name ?? '';
+
+    if (!producerUser) throw new BadRequestException('Usuário não encontrado. Cadastre-se primeiro.');
+
+    // Usa walletAddress se disponível, senão usa privyDid como identificador
+    const producer = producerUser.walletAddress ?? producerUser.privyDid ?? jwtUser.sub;
+    const producerName = producerUser.name ?? '';
 
     const traceId = `${dto.lotId}-CREATED-offline`;
+    const hasWallet = !!producerUser.walletAddress;
 
-    const [product, op] = await this.prisma.$transaction([
-      this.prisma.product.create({
-        data: {
-          lotId: dto.lotId,
-          volume: dto.volume,
-          origin: dto.origin,
-          originType: dto.originType ?? 'PESSOA',
-          producerAddress: producer,
-          producerName,
-          currentOwnerAddress: producer,
-          currentOwnerName: producerName,
-          documentHash: dto.documentHash,
-          active: true,
-          syncStatus: 'PENDING',
-          onChainAt: new Date(),
-          traces: {
-            create: {
-              id: traceId,
-              actor: producer,
-              action: 'CREATED',
-              docHash: dto.documentHash,
-              fromAddress: ethers.ZeroAddress,
-              toAddress: producer,
-              fromName: '',
-              toName: producerName,
-              blockTimestamp: new Date(),
-            },
+    const product = await this.prisma.product.create({
+      data: {
+        lotId: dto.lotId,
+        volume: dto.volume,
+        origin: dto.origin,
+        originType: dto.originType ?? 'PESSOA',
+        producerAddress: producer,
+        producerName,
+        currentOwnerAddress: producer,
+        currentOwnerName: producerName,
+        documentHash: dto.documentHash,
+        active: true,
+        syncStatus: hasWallet ? 'PENDING' : 'SYNCED',
+        onChainAt: hasWallet ? new Date() : null,
+        traces: {
+          create: {
+            id: traceId,
+            actor: producer,
+            action: 'CREATED',
+            docHash: dto.documentHash,
+            fromAddress: ethers.ZeroAddress,
+            toAddress: producer,
+            fromName: '',
+            toName: producerName,
+            blockTimestamp: new Date(),
           },
         },
-      }),
-      this.prisma.pendingOperation.create({
+      },
+    });
+
+    // Só cria operação pendente de blockchain se produtor tem carteira
+    if (hasWallet) {
+      await this.prisma.pendingOperation.create({
         data: {
           type: 'ADD_PRODUCT',
           params: {
@@ -128,29 +157,42 @@ export class SyncService {
           refId: dto.lotId,
           status: 'PENDING',
         },
-      }),
-    ]);
+      });
+    }
 
-    return { product, pendingOpId: op.id, syncStatus: 'PENDING' };
+    return { product, syncStatus: product.syncStatus };
   }
 
-  async transferOffline(dto: TransferOfflineDto) {
+  async transferOffline(dto: TransferOfflineDto, jwtUser: JwtPayload) {
+    // Identifica o remetente pelo JWT (nunca pelo corpo da requisição)
+    const callerUser = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          ...(jwtUser.privyDid ? [{ privyDid: jwtUser.privyDid }] : []),
+          ...(jwtUser.walletAddress ? [{ walletAddress: jwtUser.walletAddress }] : []),
+          { walletAddress: jwtUser.sub },
+        ],
+      },
+      select: { walletAddress: true, privyDid: true, name: true },
+    });
+    if (!callerUser) throw new BadRequestException('Usuário não encontrado. Cadastre-se primeiro.');
+
+    const fromAddr = callerUser.walletAddress ?? callerUser.privyDid ?? jwtUser.sub;
+    const fromName = callerUser.name ?? '';
+
     const product = await this.prisma.product.findUnique({ where: { lotId: dto.lotId } });
     if (!product) throw new NotFoundException('Produção não encontrada');
     if (!product.active) throw new BadRequestException('Produção inativa');
-    if (product.currentOwnerAddress !== dto.fromAddress.toLowerCase()) {
+    if (product.currentOwnerAddress !== fromAddr) {
       throw new BadRequestException('Você não é o responsável atual por esta produção');
     }
 
     const toAddr = dto.toAddress.toLowerCase();
-
-    // Buscar nome do novo responsável
     const toUser = await this.prisma.user.findUnique({
       where: { walletAddress: toAddr },
       select: { name: true },
     });
     const toName = toUser?.name ?? '';
-    const fromName = product.currentOwnerName ?? '';
 
     const traceId = `${dto.lotId}-TRANSFERRED-offline-${Date.now()}`;
 
@@ -164,10 +206,10 @@ export class SyncService {
           traces: {
             create: {
               id: traceId,
-              actor: dto.fromAddress.toLowerCase(),
+              actor: fromAddr,
               action: 'TRANSFERRED',
               docHash: product.documentHash,
-              fromAddress: dto.fromAddress.toLowerCase(),
+              fromAddress: fromAddr,
               toAddress: toAddr,
               fromName,
               toName,
@@ -180,7 +222,7 @@ export class SyncService {
         data: {
           type: 'TRANSFER_PRODUCT',
           params: { lotId: dto.lotId, toAddress: dto.toAddress },
-          userAddress: dto.fromAddress.toLowerCase(),
+          userAddress: fromAddr,
           refId: dto.lotId,
           status: 'PENDING',
         },

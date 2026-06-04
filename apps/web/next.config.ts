@@ -2,12 +2,12 @@ import type { NextConfig } from "next";
 
 // Wagmi v3 bundles connectors that have optional peer deps we don't use.
 // Stub them so webpack doesn't fail resolving uninstalled packages.
+// @coinbase/wallet-sdk removido — Privy v2 precisa dele de verdade
 const WAGMI_OPTIONAL_PEER_DEPS = [
   'porto',
   'porto/internal',
   'accounts',
   '@base-org/account',
-  '@coinbase/wallet-sdk',
   '@metamask/connect-evm',
   '@walletconnect/ethereum-provider',
   '@safe-global/safe-apps-sdk',

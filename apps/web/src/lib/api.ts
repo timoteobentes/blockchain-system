@@ -66,6 +66,8 @@ export const api = {
       request<{ message: string }>('/api/auth/nonce', { method: 'POST', body: JSON.stringify({ address }) }),
     verify: (address: string, signature: string) =>
       request<{ token: string; user: any }>('/api/auth/verify', { method: 'POST', body: JSON.stringify({ address, signature }) }),
+    privyLogin: (privyToken: string) =>
+      request<{ token: string; user: any }>('/api/auth/privy-login', { method: 'POST', body: JSON.stringify({ privyToken }) }),
   },
   users: {
     list: (page = 1, limit = 20) => request<any>(`/api/users?page=${page}&limit=${limit}`),
@@ -92,11 +94,11 @@ export const api = {
   sync: {
     status: () => request<{ blockchainEnabled: boolean; pendingOperations: number }>('/api/sync/status'),
     pending: () => request<any[]>('/api/sync/pending'),
-    registerOffline: (data: { name: string; cpf: string; walletAddress: string }) =>
+    registerOffline: (data: { name: string; cpf?: string }) =>
       request<any>('/api/sync/register', { method: 'POST', body: JSON.stringify(data) }),
-    addProductOffline: (data: { lotId: string; volume: number; origin: string; documentHash: string; producerAddress: string; originType?: string }) =>
+    addProductOffline: (data: { lotId: string; volume: number; origin: string; documentHash: string; originType?: string }) =>
       request<any>('/api/sync/product', { method: 'POST', body: JSON.stringify(data) }),
-    transferOffline: (data: { lotId: string; fromAddress: string; toAddress: string }) =>
+    transferOffline: (data: { lotId: string; toAddress: string }) =>
       request<any>('/api/sync/transfer', { method: 'POST', body: JSON.stringify(data) }),
     confirm: (opId: string, txHash: string) =>
       request<any>(`/api/sync/confirm/${opId}`, { method: 'PATCH', body: JSON.stringify({ txHash }) }),

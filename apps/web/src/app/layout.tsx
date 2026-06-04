@@ -3,6 +3,8 @@ import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { Providers } from '@/components/Providers';
 import '../styles/globals.css';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'SELVA — Rastreabilidade Amazônica',
   description: 'Sistema Estruturado Legal de Valores Amazônicos — rastreabilidade da cadeia produtiva',

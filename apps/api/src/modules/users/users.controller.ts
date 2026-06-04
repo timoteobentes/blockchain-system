@@ -21,7 +21,7 @@ export class UsersController {
   @Get('me')
   @ApiOperation({ summary: 'Perfil do usuário autenticado' })
   async me(@CurrentUser() user: JwtPayload) {
-    const dbUser = await this.usersService.findByAddress(user.sub);
+    const dbUser = await this.usersService.findMe(user);
     return { ...dbUser, isAdmin: user.isAdmin };
   }
 

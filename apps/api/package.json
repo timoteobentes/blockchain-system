@@ -28,6 +28,7 @@
     "class-transformer": "^0.5",
     "class-validator": "^0.14",
     "ethers": "^6",
+    "jose": "^6.2.3",
     "passport": "^0.7",
     "passport-jwt": "^4",
     "pdfkit": "^0.18.0",
