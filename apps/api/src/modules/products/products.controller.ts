@@ -6,6 +6,7 @@ import { ProductQueryDto } from './dto/product-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser, JwtPayload } from '../auth/decorators/current-user.decorator';
 import { CertificateService } from '../certificate/certificate.service';
 
 @ApiTags('products')
@@ -20,6 +21,14 @@ export class ProductsController {
   @ApiOperation({ summary: 'Lista produções com filtros opcionais' })
   findAll(@Query() query: ProductQueryDto) {
     return this.productsService.findAll(query);
+  }
+
+  @Get('mine')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Lista produções do produtor autenticado' })
+  findMine(@CurrentUser() user: JwtPayload, @Query() query: ProductQueryDto) {
+    return this.productsService.findMine(user, query);
   }
 
   @Get(':lotId/public')

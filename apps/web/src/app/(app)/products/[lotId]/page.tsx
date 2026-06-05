@@ -91,7 +91,12 @@ export default function ProductDetailPage() {
         </Link>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <h1 style={{ fontSize: 20, fontWeight: 800, color: '#f0f0ee', margin: 0, fontFamily: 'monospace' }}>{product.lotId}</h1>
+            <h1 style={{ fontSize: 20, fontWeight: 800, color: '#f0f0ee', margin: 0 }}>
+              {product.productName || product.lotId}
+            </h1>
+            {product.productName && (
+              <span style={{ fontSize: 13, fontFamily: 'monospace', color: 'rgba(195,228,56,0.7)', fontWeight: 500 }}>{product.lotId}</span>
+            )}
             <span style={{
               fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 6,
               background: product.active ? 'rgba(195,228,56,0.12)' : 'rgba(255,255,255,0.06)',
@@ -131,7 +136,14 @@ export default function ProductDetailPage() {
       <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '20px 22px' }}>
         <p style={{ fontSize: 12.5, fontWeight: 700, color: 'rgba(255,255,255,0.4)', margin: '0 0 16px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Dados da Produção</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px 24px' }}>
-          <InfoRow label="Quantidade produzida" value={formatVolume(product.volume)} />
+          {product.productName && <InfoRow label="Produto / Cultura" value={product.productName} />}
+          <InfoRow label="Quantidade produzida" value={formatVolume(product.volume, product.unit || 'KG')} />
+          {product.pricePerUnit != null && (
+            <InfoRow
+              label="Preço por unidade"
+              value={`R$ ${Number(product.pricePerUnit).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/${product.unit || 'KG'}`}
+            />
+          )}
           <InfoRow label="Produtor / Origem" value={producerLabel} />
           <InfoRow label="Responsável atual" value={ownerLabel} />
           {product.origin && <InfoRow label="Local de origem" value={product.origin} />}

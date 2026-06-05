@@ -1,7 +1,36 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtPayload } from '../auth/decorators/current-user.decorator';
-import { UserQueryDto } from './dto/user.dto';
+import { UserQueryDto, UpdateProfileDto } from './dto/user.dto';
+
+const PROFILE_SELECT = {
+  id: true,
+  userHash: true,
+  name: true,
+  walletAddress: true,
+  privyDid: true,
+  email: true,
+  cpf: true,
+  isProducer: true,
+  isAdmin: true,
+  onChainAt: true,
+  syncStatus: true,
+  phone: true,
+  phone2: true,
+  street: true,
+  addressNumber: true,
+  complement: true,
+  neighborhood: true,
+  city: true,
+  state: true,
+  zipCode: true,
+  assocName: true,
+  assocCnpj: true,
+  assocRole: true,
+  landSizeHa: true,
+  landType: true,
+  bio: true,
+} as const;
 
 @Injectable()
 export class UsersService {
@@ -28,25 +57,23 @@ export class UsersService {
         OR: [
           ...(jwtUser.privyDid ? [{ privyDid: jwtUser.privyDid }] : []),
           ...(jwtUser.walletAddress ? [{ walletAddress: jwtUser.walletAddress }] : []),
-          // fallback: sub pode ser walletAddress em tokens antigos
           { walletAddress: jwtUser.sub },
         ],
       },
-      select: {
-        id: true,
-        userHash: true,
-        name: true,
-        walletAddress: true,
-        privyDid: true,
-        email: true,
-        isProducer: true,
-        isAdmin: true,
-        onChainAt: true,
-        syncStatus: true,
-      },
+      select: PROFILE_SELECT,
     });
     if (!user) throw new NotFoundException('Usuário não encontrado');
     return user;
+  }
+
+  async updateProfile(jwtUser: JwtPayload, dto: UpdateProfileDto) {
+    const user = await this.findMe(jwtUser);
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: dto,
+      select: PROFILE_SELECT,
+    });
+    return updated;
   }
 
   async findByAddress(address: string) {

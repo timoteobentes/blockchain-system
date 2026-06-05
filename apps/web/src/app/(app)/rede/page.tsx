@@ -2,14 +2,12 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Package, Plus, Search, ArrowRight, Leaf } from 'lucide-react';
+import { Globe, Search, ArrowRight, Leaf } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { formatVolume } from '@/lib/utils';
-import { useAuth } from '@/hooks/useAuth';
 
-export default function MyProductsPage() {
-  const { user } = useAuth();
+export default function RedePage() {
   const [products, setProducts] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -20,7 +18,7 @@ export default function MyProductsPage() {
 
   const fetchProducts = (p = page, filter = activeFilter) => {
     setLoading(true);
-    api.products.mine({ page: p, limit: LIMIT, active: filter || undefined })
+    api.products.list({ page: p, limit: LIMIT, active: filter || undefined })
       .then((res: any) => { setProducts(res.data); setTotal(res.total); })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -33,7 +31,8 @@ export default function MyProductsPage() {
     ? products.filter(p =>
         p.lotId.toLowerCase().includes(search.toLowerCase()) ||
         (p.productName ?? '').toLowerCase().includes(search.toLowerCase()) ||
-        p.origin.toLowerCase().includes(search.toLowerCase())
+        p.origin.toLowerCase().includes(search.toLowerCase()) ||
+        (p.producerName ?? '').toLowerCase().includes(search.toLowerCase())
       )
     : products;
 
@@ -41,25 +40,23 @@ export default function MyProductsPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#f0f0ee', margin: 0 }}>Minhas Produções</h1>
-          <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', margin: '4px 0 0' }}>
-            {loading ? '...' : `${total} ${total === 1 ? 'produção cadastrada' : 'produções cadastradas'}`}
-          </p>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(195,228,56,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Globe size={17} color="#c3e438" />
+          </div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#f0f0ee', margin: 0 }}>Rede SELVA</h1>
         </div>
-        {(user?.isProducer || user?.isAdmin) && (
-          <Button asChild style={{ padding: "4px 12px" }}>
-            <Link href="/products/new"><Plus size={15} /> Cadastrar Produção</Link>
-          </Button>
-        )}
+        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', margin: 0 }}>
+          {loading ? '...' : `${total} produções registradas na plataforma`}
+        </p>
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 320 }}>
+        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 340 }}>
           <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)' }} />
           <input
-            placeholder="Buscar por produto ou código..."
+            placeholder="Buscar por produto, código, origem ou produtor..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             style={{
@@ -91,44 +88,36 @@ export default function MyProductsPage() {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '60px 20px', color: 'rgba(255,255,255,0.25)' }}>
-            <Package size={36} />
-            <p style={{ margin: 0, fontSize: 13 }}>Nenhuma produção cadastrada</p>
-            {(user?.isProducer || user?.isAdmin) && (
-              <Button asChild style={{ padding: '6px 14px', marginTop: 4 }}>
-                <Link href="/products/new"><Plus size={14} /> Cadastrar primeira produção</Link>
-              </Button>
-            )}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '60px 20px', color: 'rgba(255,255,255,0.25)' }}>
+            <Globe size={36} />
+            <p style={{ margin: 0, fontSize: 13 }}>Nenhuma produção encontrada</p>
           </div>
         ) : (
           <>
-            <div className="products-table-header" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1.2fr 1.8fr 0.9fr 0.9fr 0.8fr 36px', gap: 12, padding: '10px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              {['Produto', 'Código', 'Local de Produção', 'Quantidade', 'Preço/unid', 'Status', ''].map(h => (
+            <div className="rede-table-header" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1.8fr 1.8fr 0.9fr 0.7fr 36px', gap: 12, padding: '10px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              {['Produto', 'Código', 'Local de Origem', 'Quantidade', 'Status', ''].map(h => (
                 <span key={h} style={{ fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</span>
               ))}
             </div>
-
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {filtered.map((p, i) => (
-                <Link key={p.lotId} href={`/products/${p.lotId}`} className="product-row"
+                <Link key={p.lotId} href={`/products/${p.lotId}`} className="rede-row"
                   style={{
-                    display: 'grid', gridTemplateColumns: '1.5fr 1.2fr 1.8fr 0.9fr 0.9fr 0.8fr 36px',
+                    display: 'grid', gridTemplateColumns: '1.5fr 1.8fr 1.8fr 0.9fr 0.7fr 36px',
                     gap: 12, padding: '13px 20px',
                     borderBottom: i < filtered.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
                     textDecoration: 'none', transition: 'background 0.15s', alignItems: 'center',
                   }}
                 >
-                  <span style={{ fontSize: 13, color: '#f0f0ee', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {p.productName || '—'}
-                  </span>
-                  <span style={{ fontFamily: 'monospace', fontSize: 11.5, color: '#c3e438', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.lotId}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: '#f0f0ee', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.productName || '—'}
+                    </p>
+                    <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: '2px 0 0' }}>{p.producerName || '—'}</p>
+                  </div>
+                  <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#c3e438', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.lotId}</span>
                   <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.origin}</span>
-                  <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.5)' }}>{p.volume} {p.unit || 'KG'}</span>
-                  <span style={{ fontSize: 12, color: p.pricePerUnit != null ? '#c3e438' : 'rgba(255,255,255,0.2)' }}>
-                    {p.pricePerUnit != null
-                      ? `R$ ${Number(p.pricePerUnit).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/${p.unit || 'KG'}`
-                      : '—'}
-                  </span>
+                  <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.5)' }}>{formatVolume(p.volume, p.unit || 'KG')}</span>
                   <span style={{
                     fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, display: 'inline-block',
                     background: p.active ? 'rgba(195,228,56,0.12)' : 'rgba(255,255,255,0.06)',
@@ -142,7 +131,7 @@ export default function MyProductsPage() {
             </div>
 
             {/* Mobile cards */}
-            <div className="products-cards" style={{ display: 'none', flexDirection: 'column', gap: 8, padding: 12 }}>
+            <div className="rede-cards" style={{ display: 'none', flexDirection: 'column', gap: 8, padding: 12 }}>
               {filtered.map((p) => (
                 <Link key={p.lotId} href={`/products/${p.lotId}`} style={{ textDecoration: 'none' }}>
                   <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 11, padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -160,12 +149,7 @@ export default function MyProductsPage() {
                       </div>
                       <p style={{ fontSize: 11.5, fontFamily: 'monospace', color: '#c3e438', margin: '0 0 2px' }}>{p.lotId}</p>
                       <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.origin}</p>
-                      <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', margin: 0 }}>
-                        {formatVolume(p.volume, p.unit || 'KG')}
-                        {p.pricePerUnit != null
-                          ? ` · R$ ${Number(p.pricePerUnit).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/${p.unit || 'KG'}`
-                          : ''}
-                      </p>
+                      <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', margin: 0 }}>{p.producerName} · {formatVolume(p.volume, p.unit || 'KG')}</p>
                     </div>
                     <ArrowRight size={14} color="rgba(255,255,255,0.25)" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
@@ -186,11 +170,11 @@ export default function MyProductsPage() {
 
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
-        .product-row:hover { background: rgba(255,255,255,0.03) !important; }
-        @media (max-width: 700px) {
-          .products-table-header { display: none !important; }
-          .product-row { display: none !important; }
-          .products-cards { display: flex !important; }
+        .rede-row:hover { background: rgba(255,255,255,0.03) !important; }
+        @media (max-width: 640px) {
+          .rede-table-header { display: none !important; }
+          .rede-row { display: none !important; }
+          .rede-cards { display: flex !important; }
         }
       `}</style>
     </div>

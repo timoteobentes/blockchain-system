@@ -17,6 +17,7 @@ export function formatDate(date: string | Date): string {
   });
 }
 
-export function formatVolume(volume: number): string {
-  return `${volume.toLocaleString('pt-BR')} L`;
+export function formatVolume(volume: number, unit?: string): string {
+  const n = volume.toLocaleString('pt-BR');
+  return unit ? `${n} ${unit}` : n;
 }

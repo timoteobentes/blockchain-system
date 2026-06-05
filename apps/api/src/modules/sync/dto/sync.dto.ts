@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, IsEthereumAddress, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsOptional, Min } from 'class-validator';
 
 export class RegisterUserOfflineDto {
   @IsString() @IsNotEmpty() name: string;
@@ -11,6 +11,9 @@ export class AddProductOfflineDto {
   @IsString() @IsNotEmpty() origin: string;
   @IsString() @IsOptional() originType?: string;
   @IsString() @IsNotEmpty() documentHash: string;
+  @IsString() @IsOptional() productName?: string;
+  @IsString() @IsOptional() unit?: string;
+  @IsNumber() @IsOptional() pricePerUnit?: number;
 }
 
 export class TransferOfflineDto {

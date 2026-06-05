@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { ProductQueryDto } from './dto/product-query.dto';
+import { JwtPayload } from '../auth/decorators/current-user.decorator';
 
 @Injectable()
 export class ProductsService {
@@ -21,7 +22,46 @@ export class ProductsService {
     const [data, total] = await Promise.all([
       this.prisma.product.findMany({
         where, skip, take: limit,
-        orderBy: { onChainAt: 'desc' },
+        orderBy: { syncedAt: 'desc' },
+        include: { traces: { orderBy: { blockTimestamp: 'asc' }, take: 1 } },
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+    return { data, total, page, limit };
+  }
+
+  async findMine(jwtUser: JwtPayload, query: ProductQueryDto) {
+    const user = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          ...(jwtUser.privyDid ? [{ privyDid: jwtUser.privyDid }] : []),
+          ...(jwtUser.walletAddress ? [{ walletAddress: jwtUser.walletAddress }] : []),
+          { walletAddress: jwtUser.sub },
+        ],
+      },
+      select: { walletAddress: true, privyDid: true },
+    });
+
+    if (!user) throw new NotFoundException('Usuário não encontrado');
+
+    const producerFilters: any[] = [
+      ...(user.walletAddress ? [{ producerAddress: user.walletAddress }] : []),
+      ...(user.privyDid ? [{ producerAddress: user.privyDid }] : []),
+    ];
+
+    if (producerFilters.length === 0) {
+      return { data: [], total: 0, page: query.page ?? 1, limit: query.limit ?? 20 };
+    }
+
+    const { page = 1, limit = 20, active } = query;
+    const skip = (page - 1) * limit;
+    const where: any = { OR: producerFilters };
+    if (active !== undefined) where.active = active;
+
+    const [data, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where, skip, take: limit,
+        orderBy: { syncedAt: 'desc' },
         include: { traces: { orderBy: { blockTimestamp: 'asc' }, take: 1 } },
       }),
       this.prisma.product.count({ where }),
@@ -43,11 +83,13 @@ export class ProductsService {
       where: { lotId },
       select: {
         lotId: true,
+        productName: true,
         producerName: true,
         currentOwnerName: true,
         originType: true,
         origin: true,
         volume: true,
+        unit: true,
         active: true,
         syncStatus: true,
         onChainAt: true,

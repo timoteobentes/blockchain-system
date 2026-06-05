@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { ArrowLeft, Upload, AlertCircle, CheckCircle, Wifi, WifiOff, User, Building2, TreePine, Info } from 'lucide-react';
+import { ArrowLeft, Upload, AlertCircle, CheckCircle, Wifi, WifiOff, User, Building2, TreePine, Info, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { SELVA_ABI, CONTRACT_ADDRESS } from '@/contracts/abi';
@@ -15,6 +15,19 @@ async function fileSha256(file: File): Promise<`0x${string}`> {
   const buffer = await file.arrayBuffer();
   const hash = await crypto.subtle.digest('SHA-256', buffer);
   return ('0x' + Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('')) as `0x${string}`;
+}
+
+function generateLotId(productName: string): string {
+  const prefix = productName
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toUpperCase()
+    .slice(0, 4)
+    .padEnd(4, 'X');
+  const year = new Date().getFullYear();
+  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+  return `${prefix}-${year}-${random}`;
 }
 
 function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
@@ -34,10 +47,7 @@ const inputStyle: React.CSSProperties = {
 };
 
 const readonlyStyle: React.CSSProperties = {
-  ...inputStyle,
-  background: 'rgba(255,255,255,0.03)',
-  color: 'rgba(255,255,255,0.45)',
-  cursor: 'default',
+  ...inputStyle, background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.45)', cursor: 'default',
 };
 
 const ORIGIN_TYPES = [
@@ -46,31 +56,34 @@ const ORIGIN_TYPES = [
   { value: 'COMUNIDADE', label: 'Comunidade', icon: TreePine },
 ];
 
+const UNITS = [
+  { value: 'KG', label: 'Quilogramas (kg)' },
+  { value: 'TON', label: 'Toneladas (t)' },
+  { value: 'L', label: 'Litros (L)' },
+  { value: 'SC', label: 'Sacas (60 kg)' },
+  { value: 'CX', label: 'Caixas' },
+  { value: 'DZ', label: 'Dúzias' },
+  { value: 'UN', label: 'Unidades' },
+  { value: 'M3', label: 'Metro cúbico (m³)' },
+];
+
 function formatCnpj(v: string) {
   const d = v.replace(/\D/g, '').slice(0, 14);
-  return d
-    .replace(/^(\d{2})(\d)/, '$1.$2')
-    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
-    .replace(/\.(\d{3})(\d)/, '.$1/$2')
-    .replace(/(\d{4})(\d)/, '$1-$2');
+  return d.replace(/^(\d{2})(\d)/, '$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d)/, '$1-$2');
 }
 
 function formatCpf(v: string) {
   const d = v.replace(/\D/g, '').slice(0, 11);
-  return d
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
-    .replace(/(\d{3})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3-$4');
+  return d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/(\d{3})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3-$4');
 }
 
 function composeOrigin(originType: string, fields: any): string {
-  const { location, assocNome, assocCnpj, assocEndereco, assocResponsavel, comNome, comMunicipio, comLider } = fields;
+  const { location, assocNome, assocCnpj, assocEndereco, assocResponsavel, comNome, comCnpj, comMunicipio, comLider } = fields;
   if (originType === 'ASSOCIACAO') {
     const parts = [assocNome, assocCnpj ? `CNPJ: ${assocCnpj}` : '', assocEndereco, assocResponsavel ? `Resp.: ${assocResponsavel}` : '', location].filter(Boolean);
     return parts.join(' — ');
   }
   if (originType === 'COMUNIDADE') {
-    const { comCnpj } = fields;
     const parts = [comNome, comCnpj ? `CNPJ: ${comCnpj}` : '', comMunicipio, comLider ? `Liderança: ${comLider}` : '', location].filter(Boolean);
     return parts.join(' — ');
   }
@@ -84,19 +97,22 @@ export default function NewProductPage() {
 
   const [userCpf, setUserCpf] = useState('');
   const [userCpfLoaded, setUserCpfLoaded] = useState(false);
+  const [profileLocation, setProfileLocation] = useState('');
 
   const [form, setForm] = useState({
-    lotId: '', volume: '', originType: 'PESSOA',
-    // Pessoa Física
+    productName: '',
+    lotId: '',
+    volume: '',
+    unit: 'KG',
+    pricePerUnit: '',
+    originType: 'PESSOA',
     pessoaCpf: '',
-    // Localização (todos os tipos)
     location: '',
-    // Associação
     assocNome: '', assocCnpj: '', assocEndereco: '', assocResponsavel: '',
-    // Comunidade
     comNome: '', comCnpj: '', comMunicipio: '', comLider: '',
   });
 
+  const [lotIdManuallyEdited, setLotIdManuallyEdited] = useState(false);
   const [docHash, setDocHash] = useState<`0x${string}` | null>(null);
   const [fileName, setFileName] = useState('');
   const [error, setError] = useState('');
@@ -108,17 +124,41 @@ export default function NewProductPage() {
   const isOffline = mode.mode === 'OFFLINE';
   const isVerified = mode.mode === 'VERIFIED';
 
-  // Busca CPF atual do usuário
   useEffect(() => {
     api.users.me().then((u: any) => {
       setUserCpf(u.cpf ?? '');
       setUserCpfLoaded(true);
+      // Pre-fill location from profile address
+      const parts = [u.neighborhood, u.city, u.state].filter(Boolean);
+      if (parts.length > 0) {
+        const loc = parts.join(', ');
+        setProfileLocation(loc);
+        setForm(f => ({ ...f, location: loc }));
+      }
     }).catch(() => setUserCpfLoaded(true));
   }, []);
 
   useEffect(() => {
     if (txSuccess) setStatus('success');
   }, [txSuccess]);
+
+  // Auto-generate lotId when productName changes (unless manually edited)
+  const handleProductNameChange = (value: string) => {
+    setForm(f => {
+      const next = { ...f, productName: value };
+      if (!lotIdManuallyEdited && value.trim().length >= 2) {
+        next.lotId = generateLotId(value.trim());
+      }
+      return next;
+    });
+  };
+
+  const regenerateLotId = () => {
+    if (form.productName.trim().length >= 2) {
+      setForm(f => ({ ...f, lotId: generateLotId(f.productName.trim()) }));
+      setLotIdManuallyEdited(false);
+    }
+  };
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -131,18 +171,15 @@ export default function NewProductPage() {
     e.preventDefault();
     setError('');
 
+    if (!form.productName.trim()) { setError('Informe o nome do produto ou cultura'); return; }
+    if (!form.lotId.trim()) { setError('O código da produção é obrigatório'); return; }
     if (!docHash) { setError('Anexe o comprovante ou documento da produção'); return; }
 
-    // Validações por tipo
-    if (form.originType === 'ASSOCIACAO') {
-      if (!form.assocNome || !form.assocCnpj || !form.assocEndereco) {
-        setError('Preencha nome, CNPJ e endereço da associação'); return;
-      }
+    if (form.originType === 'ASSOCIACAO' && (!form.assocNome || !form.assocCnpj || !form.assocEndereco)) {
+      setError('Preencha nome, CNPJ e endereço da associação'); return;
     }
-    if (form.originType === 'COMUNIDADE') {
-      if (!form.comNome || !form.comMunicipio) {
-        setError('Preencha nome e município da comunidade'); return;
-      }
+    if (form.originType === 'COMUNIDADE' && (!form.comNome || !form.comMunicipio)) {
+      setError('Preencha nome e município da comunidade'); return;
     }
 
     setStatus('loading');
@@ -161,7 +198,10 @@ export default function NewProductPage() {
 
       await api.sync.addProductOffline({
         lotId: form.lotId,
+        productName: form.productName.trim(),
         volume: Number(form.volume),
+        unit: form.unit,
+        pricePerUnit: form.pricePerUnit ? parseFloat(form.pricePerUnit) : undefined,
         origin,
         documentHash: docHash,
         originType: form.originType,
@@ -183,21 +223,18 @@ export default function NewProductPage() {
           <CheckCircle size={28} color="#c3e438" />
         </div>
         <div style={{ textAlign: 'center' }}>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#f0f0ee', margin: 0 }}>Produção registrada com sucesso!</h2>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#f0f0ee', margin: 0 }}>Produção registrada!</h2>
           <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', margin: '8px 0 0' }}>
-            {isVerified
-              ? 'Registro confirmado e verificado na rede.'
-              : 'Dados salvos no sistema. Você pode acessar e compartilhar o QR Code.'}
+            Código: <span style={{ fontFamily: 'monospace', color: '#c3e438' }}>{form.lotId}</span>
           </p>
         </div>
-        <Button onClick={() => router.push('/products')} style={{ padding: '4px 12px', cursor: 'pointer' }}>Ver produções</Button>
+        <Button onClick={() => router.push('/products')} style={{ padding: '4px 12px', cursor: 'pointer' }}>Ver minhas produções</Button>
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Título */}
+    <div style={{ maxWidth: 580, display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <Link href="/products" style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.6)', textDecoration: 'none' }}>
           <ArrowLeft size={16} />
@@ -219,14 +256,11 @@ export default function NewProductPage() {
           <WifiOff size={17} color="#fbbf24" style={{ flexShrink: 0, marginTop: 1 }} />
           <div>
             <p style={{ fontSize: 13, fontWeight: 700, color: '#fbbf24', margin: '0 0 3px' }}>Sem conexão</p>
-            <p style={{ fontSize: 12.5, color: 'rgba(251,191,36,0.75)', margin: 0, lineHeight: 1.55 }}>
-              Os dados ficarão salvos e serão enviados ao sistema quando a conexão voltar.
-            </p>
+            <p style={{ fontSize: 12.5, color: 'rgba(251,191,36,0.75)', margin: 0, lineHeight: 1.55 }}>Os dados ficarão salvos e serão enviados ao sistema quando a conexão voltar.</p>
           </div>
         </div>
       )}
 
-      {/* Formulário */}
       <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 24 }}>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
@@ -243,7 +277,7 @@ export default function NewProductPage() {
             </div>
           </Field>
 
-          {/* ── PESSOA FÍSICA ── */}
+          {/* Pessoa Física */}
           {form.originType === 'PESSOA' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '14px 16px', borderRadius: 10, background: 'rgba(195,228,56,0.04)', border: '1px solid rgba(195,228,56,0.12)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -253,30 +287,17 @@ export default function NewProductPage() {
               <Field label="Nome completo">
                 <input style={readonlyStyle} value={user?.name ?? ''} readOnly tabIndex={-1} />
               </Field>
-              <Field label="CPF" hint={!userCpf && userCpfLoaded ? 'CPF não cadastrado — adicione para uso em documentos.' : ''}>
+              <Field label="CPF" hint={!userCpf && userCpfLoaded ? 'CPF não cadastrado — adicione no perfil.' : ''}>
                 {userCpf ? (
                   <input style={readonlyStyle} value={userCpf} readOnly tabIndex={-1} />
                 ) : (
-                  <input
-                    style={inputStyle}
-                    placeholder="000.000.000-00"
-                    value={form.pessoaCpf}
-                    onChange={e => setForm(f => ({ ...f, pessoaCpf: formatCpf(e.target.value) }))}
-                  />
+                  <input style={inputStyle} placeholder="000.000.000-00" value={form.pessoaCpf} onChange={e => setForm(f => ({ ...f, pessoaCpf: formatCpf(e.target.value) }))} />
                 )}
               </Field>
-              {!userCpf && userCpfLoaded && (
-                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                  <Info size={13} color="rgba(255,255,255,0.3)" style={{ flexShrink: 0, marginTop: 1 }} />
-                  <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', margin: 0, lineHeight: 1.5 }}>
-                    O CPF é opcional, mas necessário para emissão de documentos fiscais.
-                  </p>
-                </div>
-              )}
             </div>
           )}
 
-          {/* ── ASSOCIAÇÃO ── */}
+          {/* Associação */}
           {form.originType === 'ASSOCIACAO' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '14px 16px', borderRadius: 10, background: 'rgba(96,165,250,0.04)', border: '1px solid rgba(96,165,250,0.12)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -284,34 +305,21 @@ export default function NewProductPage() {
                 <span style={{ fontSize: 12, fontWeight: 600, color: '#60a5fa' }}>Dados da associação</span>
               </div>
               <Field label="Nome da associação">
-                <input
-                  style={inputStyle} placeholder="ex: Assoc. dos Produtores do Rio Preto"
-                  value={form.assocNome} onChange={e => setForm(f => ({ ...f, assocNome: e.target.value }))} required
-                />
+                <input style={inputStyle} placeholder="ex: Assoc. dos Produtores do Rio Preto" value={form.assocNome} onChange={e => setForm(f => ({ ...f, assocNome: e.target.value }))} required />
               </Field>
               <Field label="CNPJ">
-                <input
-                  style={inputStyle} placeholder="00.000.000/0000-00"
-                  value={form.assocCnpj}
-                  onChange={e => setForm(f => ({ ...f, assocCnpj: formatCnpj(e.target.value) }))} required
-                />
+                <input style={inputStyle} placeholder="00.000.000/0000-00" value={form.assocCnpj} onChange={e => setForm(f => ({ ...f, assocCnpj: formatCnpj(e.target.value) }))} required />
               </Field>
               <Field label="Endereço">
-                <input
-                  style={inputStyle} placeholder="Rua / Comunidade, Município — Estado"
-                  value={form.assocEndereco} onChange={e => setForm(f => ({ ...f, assocEndereco: e.target.value }))} required
-                />
+                <input style={inputStyle} placeholder="Rua / Comunidade, Município — Estado" value={form.assocEndereco} onChange={e => setForm(f => ({ ...f, assocEndereco: e.target.value }))} required />
               </Field>
               <Field label="Nome do responsável">
-                <input
-                  style={inputStyle} placeholder="Nome completo do representante"
-                  value={form.assocResponsavel} onChange={e => setForm(f => ({ ...f, assocResponsavel: e.target.value }))}
-                />
+                <input style={inputStyle} placeholder="Nome completo do representante" value={form.assocResponsavel} onChange={e => setForm(f => ({ ...f, assocResponsavel: e.target.value }))} />
               </Field>
             </div>
           )}
 
-          {/* ── COMUNIDADE ── */}
+          {/* Comunidade */}
           {form.originType === 'COMUNIDADE' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '14px 16px', borderRadius: 10, background: 'rgba(74,222,128,0.04)', border: '1px solid rgba(74,222,128,0.12)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -319,55 +327,88 @@ export default function NewProductPage() {
                 <span style={{ fontSize: 12, fontWeight: 600, color: '#4ade80' }}>Dados da comunidade</span>
               </div>
               <Field label="Nome da comunidade">
-                <input
-                  style={inputStyle} placeholder="ex: Comunidade Tradicional São João"
-                  value={form.comNome} onChange={e => setForm(f => ({ ...f, comNome: e.target.value }))} required
-                />
+                <input style={inputStyle} placeholder="ex: Comunidade Tradicional São João" value={form.comNome} onChange={e => setForm(f => ({ ...f, comNome: e.target.value }))} required />
               </Field>
               <Field label="CNPJ (opcional)">
-                <input
-                  style={inputStyle} placeholder="00.000.000/0000-00"
-                  value={form.comCnpj}
-                  onChange={e => setForm(f => ({ ...f, comCnpj: formatCnpj(e.target.value) }))}
-                />
+                <input style={inputStyle} placeholder="00.000.000/0000-00" value={form.comCnpj} onChange={e => setForm(f => ({ ...f, comCnpj: formatCnpj(e.target.value) }))} />
               </Field>
               <Field label="Município / Localidade">
-                <input
-                  style={inputStyle} placeholder="ex: Tefé — AM"
-                  value={form.comMunicipio} onChange={e => setForm(f => ({ ...f, comMunicipio: e.target.value }))} required
-                />
+                <input style={inputStyle} placeholder="ex: Tefé — AM" value={form.comMunicipio} onChange={e => setForm(f => ({ ...f, comMunicipio: e.target.value }))} required />
               </Field>
               <Field label="Liderança comunitária (opcional)">
-                <input
-                  style={inputStyle} placeholder="Nome do líder ou representante"
-                  value={form.comLider} onChange={e => setForm(f => ({ ...f, comLider: e.target.value }))}
-                />
+                <input style={inputStyle} placeholder="Nome do líder ou representante" value={form.comLider} onChange={e => setForm(f => ({ ...f, comLider: e.target.value }))} />
               </Field>
             </div>
           )}
 
-          {/* Campos comuns a todos os tipos */}
-          <Field label="Código da produção">
+          {/* Nome do produto — gera o código automático */}
+          <Field label="Nome do produto / cultura" hint="Ex: Café Arábica, Açaí, Mamão Formosa, Mel de Abelha...">
             <input
-              style={inputStyle} placeholder="ex: COPA-2025-001"
-              value={form.lotId} onChange={e => setForm(f => ({ ...f, lotId: e.target.value }))} required
+              style={inputStyle}
+              placeholder="ex: Café Arábica"
+              value={form.productName}
+              onChange={e => handleProductNameChange(e.target.value)}
+              required
             />
           </Field>
 
-          <Field label="Quantidade produzida (litros ou kg)">
+          {/* Código da produção — auto-gerado */}
+          <Field label="Código da produção" hint="Gerado automaticamente a partir do nome. Você pode editar.">
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                style={{ ...inputStyle, fontFamily: 'monospace', flex: 1 }}
+                placeholder="ex: CAFE-2026-7823"
+                value={form.lotId}
+                onChange={e => { setForm(f => ({ ...f, lotId: e.target.value })); setLotIdManuallyEdited(true); }}
+                required
+              />
+              {form.productName.trim().length >= 2 && (
+                <button type="button" onClick={regenerateLotId} title="Gerar novo código"
+                  style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(195,228,56,0.1)', border: '1px solid rgba(195,228,56,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                  <RefreshCw size={15} color="#c3e438" />
+                </button>
+              )}
+            </div>
+          </Field>
+
+          {/* Quantidade + unidade */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Field label="Quantidade produzida">
+              <input
+                style={inputStyle} type="number" min="1" placeholder="500"
+                value={form.volume} onChange={e => setForm(f => ({ ...f, volume: e.target.value }))} required
+              />
+            </Field>
+            <Field label="Unidade">
+              <select style={{ ...inputStyle, appearance: 'none', colorScheme: 'dark', cursor: 'pointer' }} value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>
+                {UNITS.map(u => <option key={u.value} value={u.value} style={{ background: '#0d0f07', color: '#f0f0ee' }}>{u.label}</option>)}
+              </select>
+            </Field>
+          </div>
+
+          {/* Preço por unidade */}
+          <Field label="Preço de venda por unidade (R$) — opcional" hint={`Preço por ${UNITS.find(u => u.value === form.unit)?.label?.toLowerCase() || form.unit}`}>
             <input
-              style={inputStyle} type="number" min="1" placeholder="500"
-              value={form.volume} onChange={e => setForm(f => ({ ...f, volume: e.target.value }))} required
+              style={inputStyle} type="number" min="0" step="0.01" placeholder="0.00"
+              value={form.pricePerUnit} onChange={e => setForm(f => ({ ...f, pricePerUnit: e.target.value }))}
             />
           </Field>
 
-          <Field label="Local de extração / produção">
+          {/* Local de produção */}
+          <Field
+            label="Local de produção"
+            hint={profileLocation ? `Pré-preenchido com seu endereço. Edite se necessário.` : 'Você pode completar seu endereço no perfil.'}
+          >
             <input
-              style={inputStyle} placeholder="ex: Manaus/AM — Comunidade Rio Preto"
-              value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} required
+              style={inputStyle}
+              placeholder="ex: Tefé/AM — Comunidade Rio Preto"
+              value={form.location}
+              onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
+              required
             />
           </Field>
 
+          {/* Documento */}
           <Field label="Comprovante ou documento (PDF, foto)">
             <label style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,

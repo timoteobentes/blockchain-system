@@ -99,7 +99,7 @@ export class SyncService {
           { walletAddress: jwtUser.sub },
         ],
       },
-      select: { id: true, name: true, walletAddress: true, privyDid: true },
+      select: { id: true, name: true, walletAddress: true, privyDid: true, isProducer: true },
     });
 
     if (!producerUser) throw new BadRequestException('Usuário não encontrado. Cadastre-se primeiro.');
@@ -114,7 +114,10 @@ export class SyncService {
     const product = await this.prisma.product.create({
       data: {
         lotId: dto.lotId,
+        productName: dto.productName ?? '',
         volume: dto.volume,
+        unit: dto.unit ?? 'KG',
+        pricePerUnit: dto.pricePerUnit ?? null,
         origin: dto.origin,
         originType: dto.originType ?? 'PESSOA',
         producerAddress: producer,
@@ -140,6 +143,14 @@ export class SyncService {
         },
       },
     });
+
+    // Promove automaticamente para produtor ao cadastrar a primeira produção
+    if (!producerUser.isProducer) {
+      await this.prisma.user.update({
+        where: { id: producerUser.id },
+        data: { isProducer: true },
+      });
+    }
 
     // Só cria operação pendente de blockchain se produtor tem carteira
     if (hasWallet) {

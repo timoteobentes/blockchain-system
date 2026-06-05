@@ -16,17 +16,42 @@ enum SyncStatus {
 
 model User {
   id            String     @id @default(cuid())
-  privyDid      String?    @unique  // Privy DID — auth sem carteira
-  walletAddress String?    @unique  // Carteira blockchain (opcional)
-  email         String?             // E-mail via Privy
-  userHash      String?    @unique  // Hash on-chain (preenchido após sync blockchain)
+  privyDid      String?    @unique
+  walletAddress String?    @unique
+  email         String?
+  userHash      String?    @unique
   name          String
-  cpf           String?             // Opcional no cadastro inicial
+  cpf           String?
   isProducer    Boolean    @default(false)
   isAdmin       Boolean    @default(false)
   syncStatus    SyncStatus @default(PENDING)
-  onChainAt     DateTime?           // Preenchido após registro on-chain
+  onChainAt     DateTime?
   syncedAt      DateTime   @default(now()) @updatedAt
+
+  // Contato
+  phone         String?
+  phone2        String?
+
+  // Endereço (local de produção)
+  street        String?
+  addressNumber String?
+  complement    String?
+  neighborhood  String?
+  city          String?
+  state         String?
+  zipCode       String?
+
+  // Associação / Cooperativa
+  assocName     String?
+  assocCnpj     String?
+  assocRole     String?
+
+  // Terreno
+  landSizeHa    Float?
+  landType      String?
+
+  // Sobre
+  bio           String?
 
   @@index([walletAddress])
   @@index([privyDid])
@@ -36,7 +61,10 @@ model User {
 model Product {
   id                  String     @id @default(cuid())
   lotId               String     @unique
+  productName         String     @default("")
   volume              Int
+  unit                String     @default("KG")
+  pricePerUnit        Float?
   origin              String
   originType          String     @default("PESSOA")
   producerAddress     String
@@ -46,7 +74,7 @@ model Product {
   documentHash        String
   active              Boolean    @default(true)
   syncStatus          SyncStatus @default(SYNCED)
-  onChainAt           DateTime?           // Preenchido após sync blockchain
+  onChainAt           DateTime?
   syncedAt            DateTime   @default(now()) @updatedAt
   traces              Trace[]
 

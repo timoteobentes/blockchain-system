@@ -72,6 +72,7 @@ export const api = {
   users: {
     list: (page = 1, limit = 20) => request<any>(`/api/users?page=${page}&limit=${limit}`),
     me: () => request<any>('/api/users/me'),
+    updateMe: (data: Record<string, any>) => request<any>('/api/users/me', { method: 'PATCH', body: JSON.stringify(data) }),
     byAddress: (address: string) => request<any>(`/api/users/${address}`),
     lookupByCpf: (cpf: string) => request<{ name: string; walletAddress: string; isProducer: boolean }>(`/api/users/lookup?cpf=${encodeURIComponent(cpf)}`),
   },
@@ -86,6 +87,12 @@ export const api = {
       ).toString();
       return request<any>(`/api/products${q ? '?' + q : ''}`);
     },
+    mine: (params: Record<string, any> = {}) => {
+      const q = new URLSearchParams(
+        Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== ''))
+      ).toString();
+      return request<any>(`/api/products/mine${q ? '?' + q : ''}`);
+    },
     byLotId: (lotId: string) => request<any>(`/api/products/${lotId}`),
     public: (lotId: string) => request<any>(`/api/products/${lotId}/public`),
     history: (lotId: string) => request<any[]>(`/api/products/${lotId}/history`),
@@ -96,7 +103,7 @@ export const api = {
     pending: () => request<any[]>('/api/sync/pending'),
     registerOffline: (data: { name: string; cpf?: string }) =>
       request<any>('/api/sync/register', { method: 'POST', body: JSON.stringify(data) }),
-    addProductOffline: (data: { lotId: string; volume: number; origin: string; documentHash: string; originType?: string }) =>
+    addProductOffline: (data: { lotId: string; volume: number; origin: string; documentHash: string; originType?: string; productName?: string; unit?: string; pricePerUnit?: number }) =>
       request<any>('/api/sync/product', { method: 'POST', body: JSON.stringify(data) }),
     transferOffline: (data: { lotId: string; toAddress: string }) =>
       request<any>('/api/sync/transfer', { method: 'POST', body: JSON.stringify(data) }),
