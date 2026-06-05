@@ -66,7 +66,7 @@ export default async function PublicPage({ params }: { params: Promise<{ lotId: 
 
   const isOffline = product.syncStatus === 'PENDING' || !product.traces?.some((t: any) => t.txHash);
   const dateStr = product.onChainAt ? new Date(product.onChainAt).toLocaleDateString('pt-BR') : '—';
-  const volumeStr = `${Number(product.volume).toLocaleString('pt-BR')} litros`;
+  const volumeStr = `${Number(product.volume).toLocaleString('pt-BR')} ${product.unit || 'KG'}`;
   const originTypeLabel = ORIGIN_LABELS[product.originType] ?? 'Pessoa física';
 
   return (
@@ -79,7 +79,7 @@ export default async function PublicPage({ params }: { params: Promise<{ lotId: 
           </div>
           <div>
             <div style={{ fontSize: 14, fontWeight: 800, color: green, letterSpacing: '0.05em' }}>SELVA</div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>Rastreabilidade Amazônica</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>AMAZONIC BLOCKCHAIN ECOSYSTEM</div>
           </div>
         </div>
         <div style={{

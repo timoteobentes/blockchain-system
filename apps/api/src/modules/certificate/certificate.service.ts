@@ -5,21 +5,23 @@ import * as QRCode from 'qrcode';
 import * as path from 'path';
 import * as fs from 'fs';
 
-const GREEN = '#c3e438';
-const DARK = '#1a2200';
-const GRAY = '#555555';
-const LIGHT_GRAY = '#f5f5f5';
+const GREEN      = '#c3e438';
+const DARK       = '#1a2200';
+const BODY_TEXT  = '#222222';
+const MUTED      = '#777777';
+const FIELD_BG   = '#f6f9ee';
+const FOOTER_BG  = '#2d2d2d';
 
 const ACTION_LABELS: Record<string, string> = {
-  CREATED: 'Cadastro realizado',
+  CREATED:     'Cadastro realizado',
   TRANSFERRED: 'Transferência de responsabilidade',
   DEACTIVATED: 'Produção desativada',
 };
 
-const ORIGIN_LABELS: Record<string, string> = {
-  PESSOA: 'Pessoa física',
-  ASSOCIACAO: 'Associação',
-  COMUNIDADE: 'Comunidade',
+const TRACE_COLORS: Record<string, string> = {
+  CREATED:     GREEN,
+  TRANSFERRED: '#60a5fa',
+  DEACTIVATED: '#f87171',
 };
 
 @Injectable()
@@ -52,135 +54,252 @@ export class CertificateService {
 
       const W = 595.28;
       const H = 841.89;
-      const M = 40; // margin
+      const M = 48;
 
-      // ── Header ───────────────────────────────────────────────────
-      doc.rect(0, 0, W, 90).fill(DARK);
+      // ── 1. White header with centered logo ─────────────────────────
+      const HEADER_H = 108;
+      doc.rect(0, 0, W, HEADER_H).fill('white');
 
       if (this.logoPath) {
-        try { doc.image(this.logoPath, M, 12, { height: 66 }); } catch {}
+        try {
+          doc.image(this.logoPath, 0, 12, { fit: [W, 80], align: 'center', valign: 'center' });
+        } catch {
+          this.drawTextLogo(doc, W, 14);
+        }
+      } else {
+        this.drawTextLogo(doc, W, 14);
       }
 
-      doc.fontSize(18).fillColor(GREEN).font('Helvetica-Bold')
-        .text('SELVA', M + 76, 24);
-      doc.fontSize(9).fillColor('white').font('Helvetica')
-        .text('Sistema de Rastreabilidade Amazônica', M + 76, 46)
-        .text('selva.eco.br', M + 76, 60);
+      // ── 2. Green band ───────────────────────────────────────────────
+      const BAND_H = 28;
+      doc.rect(0, HEADER_H, W, BAND_H).fill(GREEN);
 
-      // Status badge
-      const badgeText = isOffline ? 'PENDENTE' : 'VERIFICADO';
-      const badgeColor = isOffline ? '#fbbf24' : GREEN;
-      doc.fontSize(8).fillColor(badgeColor).font('Helvetica-Bold')
-        .text(badgeText, W - M - 80, 38, { width: 80, align: 'right' });
+      doc.fontSize(9.5).fillColor(DARK).font('Helvetica-Bold')
+        .text('SELVA - AMAZONIC BLOCKCHAIN ECOSYSTEM', 0, HEADER_H + 9, { align: 'center', width: W });
 
-      // ── Body background ───────────────────────────────────────────
-      doc.rect(0, 90, W, H - 130).fill('white');
+      // ── 3. Body area ────────────────────────────────────────────────
+      const FOOTER_H = 52;
+      const BODY_Y = HEADER_H + BAND_H;
+      const BODY_H = H - BODY_Y - FOOTER_H;
+      doc.rect(0, BODY_Y, W, BODY_H).fill('white');
 
-      // ── Title ─────────────────────────────────────────────────────
-      doc.fontSize(14).fillColor(DARK).font('Helvetica-Bold')
-        .text('COMPROVANTE DE RASTREABILIDADE', M, 108, { align: 'center', width: W - M * 2 });
+      // Watermark
+      this.drawWatermark(doc, W, BODY_Y, BODY_H);
 
-      doc.moveTo(M, 130).lineTo(W - M, 130).lineWidth(0.5).strokeColor(GREEN).stroke();
+      let y = BODY_Y + 22;
 
-      // ── Dados principais ──────────────────────────────────────────
-      let y = 142;
+      // Document title
+      doc.fontSize(13.5).fillColor(DARK).font('Helvetica-Bold')
+        .text('COMPROVANTE DE RASTREABILIDADE', 0, y, { align: 'center', width: W });
+      y += 18;
 
-      const row = (label: string, value: string, yPos: number) => {
-        doc.fontSize(8.5).fillColor(GRAY).font('Helvetica').text(label + ':', M, yPos);
-        doc.fontSize(9.5).fillColor(DARK).font('Helvetica-Bold').text(value, M + 130, yPos - 1, { width: W - M * 2 - 130 });
-      };
+      if (product.productName) {
+        doc.fontSize(10).fillColor(MUTED).font('Helvetica')
+          .text(product.productName, 0, y, { align: 'center', width: W });
+        y += 16;
+      }
 
-      const producerName = product.producerName || product.producerAddress?.slice(0, 10) + '...';
-      const ownerName = product.currentOwnerName || product.currentOwnerAddress?.slice(0, 10) + '...';
-      const originTypeLabel = ORIGIN_LABELS[product.originType] ?? 'Pessoa física';
-      const dateStr = product.onChainAt ? new Date(product.onChainAt).toLocaleDateString('pt-BR') : '—';
-      const volumeStr = `${product.volume?.toLocaleString('pt-BR')} litros`;
+      // Status badge (right-aligned)
+      const badgeText = isOffline ? '  PENDENTE  ' : '  VERIFICADO  ';
+      const badgeColor = isOffline ? '#f59e0b' : '#16a34a';
+      const badgeBorder = isOffline ? '#fcd34d' : GREEN;
+      doc.fontSize(7.5);
+      const badgeTextW = doc.widthOfString(badgeText);
+      const bx = W - M - badgeTextW - 8;
+      doc.roundedRect(bx, y - 2, badgeTextW + 8, 16, 4)
+        .lineWidth(1).strokeColor(badgeBorder).fillAndStroke(isOffline ? '#fef9c3' : '#f0f9e8');
+      doc.fontSize(7.5).fillColor(badgeColor).font('Helvetica-Bold')
+        .text(isOffline ? 'PENDENTE' : 'VERIFICADO', bx + 4, y + 2, { width: badgeTextW });
 
-      row('Produtor / Origem', producerName, y); y += 18;
-      row('Tipo de cadastro', originTypeLabel, y); y += 18;
-      row('Local de origem', product.origin, y); y += 18;
-      row('Código da produção', product.lotId, y); y += 18;
-      row('Volume', volumeStr, y); y += 18;
-      row('Data de registro', dateStr, y); y += 18;
-      row('Responsável atual', ownerName, y); y += 18;
+      y += 22;
 
-      // ── Histórico ─────────────────────────────────────────────────
-      y += 6;
-      doc.moveTo(M, y).lineTo(W - M, y).lineWidth(0.3).strokeColor('#dddddd').stroke();
-      y += 10;
+      // Green separator
+      doc.moveTo(M, y).lineTo(W - M, y).lineWidth(1.5).strokeColor(GREEN).stroke();
+      y += 16;
 
-      doc.fontSize(9).fillColor(DARK).font('Helvetica-Bold')
+      // ── Data fields (2-column grid) ─────────────────────────────────
+      const dateStr = product.onChainAt
+        ? new Date(product.onChainAt).toLocaleDateString('pt-BR')
+        : '—';
+      const unit = product.unit || 'KG';
+      const volumeStr = `${Number(product.volume ?? 0).toLocaleString('pt-BR')} ${unit}`;
+      const producerName = product.producerName || this.shortAddr(product.producerAddress);
+      const ownerName = product.currentOwnerName || this.shortAddr(product.currentOwnerAddress);
+      const priceStr = product.pricePerUnit != null
+        ? `R$ ${Number(product.pricePerUnit).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/${unit}`
+        : null;
+
+      const fields: [string, string][] = [
+        ['Código da produção', product.lotId],
+        ['Produtor / Origem', producerName],
+        ['Local de origem', product.origin || '—'],
+        ['Quantidade produzida', volumeStr],
+        ...(priceStr ? [['Preço por unidade', priceStr] as [string, string]] : []),
+        ['Data de registro', dateStr],
+        ['Responsável atual', ownerName],
+      ];
+
+      const GAP = 10;
+      const FIELD_H = 38;
+      const fieldW = (W - M * 2 - GAP) / 2;
+      const startFieldY = y;
+
+      fields.forEach(([label, value], idx) => {
+        const col = idx % 2;
+        const row = Math.floor(idx / 2);
+        const fx = M + col * (fieldW + GAP);
+        const fy = startFieldY + row * (FIELD_H + 6);
+
+        doc.roundedRect(fx, fy, fieldW, FIELD_H, 4).fill(FIELD_BG);
+        doc.fontSize(7).fillColor(MUTED).font('Helvetica')
+          .text(label.toUpperCase(), fx + 10, fy + 7, { width: fieldW - 20 });
+        doc.fontSize(10).fillColor(BODY_TEXT).font('Helvetica-Bold')
+          .text(value, fx + 10, fy + 18, { width: fieldW - 20, ellipsis: true });
+      });
+
+      y = startFieldY + Math.ceil(fields.length / 2) * (FIELD_H + 6) + 8;
+
+      // Hash do documento — linha completa (valor longo)
+      if (product.documentHash) {
+        const fullW = W - M * 2;
+        doc.roundedRect(M, y, fullW, FIELD_H, 4).fill(FIELD_BG);
+        doc.fontSize(7).fillColor(MUTED).font('Helvetica')
+          .text('HASH DO DOCUMENTO', M + 10, y + 7, { width: fullW - 20 });
+        doc.fontSize(8.5).fillColor(BODY_TEXT).font('Courier')
+          .text(product.documentHash, M + 10, y + 18, { width: fullW - 20, ellipsis: true });
+        y += FIELD_H + 6;
+      }
+
+      y += 2;
+
+      // ── History ─────────────────────────────────────────────────────
+      doc.moveTo(M, y).lineTo(W - M, y).lineWidth(0.5).strokeColor('#e0e0e0').stroke();
+      y += 12;
+
+      doc.fontSize(8.5).fillColor(DARK).font('Helvetica-Bold')
         .text('HISTÓRICO DA PRODUÇÃO', M, y);
       y += 14;
 
       for (const trace of traces) {
-        const label = ACTION_LABELS[trace.action] ?? trace.action;
-        const traceDate = trace.blockTimestamp
+        const label   = ACTION_LABELS[trace.action] ?? trace.action;
+        const dotClr  = TRACE_COLORS[trace.action] ?? MUTED;
+        const dateVal = trace.blockTimestamp
           ? new Date(trace.blockTimestamp).toLocaleDateString('pt-BR')
           : '—';
 
-        let traceText = label;
+        let text = label;
         if (trace.action === 'CREATED' && trace.toName) {
-          traceText += ` por ${trace.toName}`;
+          text += ` por ${trace.toName}`;
         } else if (trace.action === 'TRANSFERRED') {
-          const from = trace.fromName || 'anterior';
-          const to = trace.toName || 'destinatário';
-          traceText += `: ${from} → ${to}`;
+          text += `: ${trace.fromName || 'anterior'} → ${trace.toName || 'destinatário'}`;
         }
 
-        doc.rect(M, y, W - M * 2, 18).fill(LIGHT_GRAY);
-        doc.fontSize(8).fillColor(DARK).font('Helvetica')
-          .text(`● ${traceText}`, M + 6, y + 5, { width: W - M * 2 - 80 });
-        doc.fontSize(8).fillColor(GRAY).font('Helvetica')
-          .text(traceDate, W - M - 60, y + 5, { width: 60, align: 'right' });
-        y += 22;
+        const ROW_H = trace.txHash ? 28 : 22;
+        doc.roundedRect(M, y, W - M * 2, ROW_H, 3).fill(FIELD_BG);
+
+        // dot
+        doc.circle(M + 12, y + ROW_H / 2, 4).fill(dotClr);
+
+        doc.fontSize(8.5).fillColor(BODY_TEXT).font('Helvetica')
+          .text(text, M + 22, y + (trace.txHash ? 4 : 7), { width: W - M * 2 - 100 });
+
+        if (trace.txHash) {
+          doc.fontSize(6.5).fillColor('#aaaaaa').font('Courier')
+            .text(`tx: ${trace.txHash.slice(0, 22)}...`, M + 22, y + 16, { width: W - M * 2 - 100 });
+        }
+
+        doc.fontSize(8).fillColor(MUTED).font('Helvetica')
+          .text(dateVal, W - M - 80, y + (ROW_H - 9) / 2, { width: 80, align: 'right' });
+
+        y += ROW_H + 5;
       }
 
-      // ── QR Code ───────────────────────────────────────────────────
-      y += 10;
-      const QR_SIZE = 130;
+      // ── QR Code ─────────────────────────────────────────────────────
+      y += 8;
+      const QR_SIZE = 90;
       const qrX = (W - QR_SIZE) / 2;
 
       try {
         const qrBuf = await QRCode.toBuffer(publicUrl, {
-          width: QR_SIZE, margin: 2,
-          color: { dark: '#000000', light: '#ffffff' },
+          width: QR_SIZE * 4, margin: 1,
+          color: { dark: '#1a2200', light: '#ffffff' },
         });
         doc.image(qrBuf, qrX, y, { width: QR_SIZE, height: QR_SIZE });
       } catch {}
 
-      doc.fontSize(8.5).fillColor(GRAY).font('Helvetica')
-        .text('Escaneie para verificar a autenticidade', 0, y + QR_SIZE + 4, { align: 'center', width: W });
+      doc.fontSize(7.5).fillColor(MUTED).font('Helvetica')
+        .text('Escaneie para verificar autenticidade', 0, y + QR_SIZE + 4, { align: 'center', width: W });
+      doc.fontSize(7).fillColor(MUTED).font('Helvetica')
+        .text(publicUrl, 0, y + QR_SIZE + 14, { align: 'center', width: W });
 
-      // ── Informações Técnicas ───────────────────────────────────────
-      const techY = y + QR_SIZE + 22;
-      doc.moveTo(M, techY).lineTo(W - M, techY).lineWidth(0.3).strokeColor('#dddddd').stroke();
-
-      doc.fontSize(7.5).fillColor(GRAY).font('Helvetica-Bold')
-        .text('INFORMAÇÕES TÉCNICAS', M, techY + 6);
-
-      doc.fontSize(7).fillColor(GRAY).font('Helvetica')
-        .text(`ID do lote: ${product.lotId}`, M, techY + 18)
-        .text(`Hash do doc.: ${product.documentHash ? product.documentHash.slice(0, 30) + '...' : '—'}`, M, techY + 28)
-        .text(`Contrato: ${this.contractAddress || '(não deployado)'}`, M, techY + 38)
-        .text('Rede: Polygon Amoy (chainId 80002)', M, techY + 48);
+      // Technical mini-line
+      const techY = y + QR_SIZE + 28;
+      doc.fontSize(6.5).fillColor('#bbbbbb').font('Helvetica')
+        .text(
+          `ID: ${product.lotId}  ·  Hash: ${product.documentHash ? product.documentHash.slice(0, 18) + '…' : '—'}  ·  Rede: Polygon Amoy (chainId 80002)`,
+          0, techY, { align: 'center', width: W },
+        );
 
       if (isOffline) {
-        doc.fontSize(7.5).fillColor('#cc4400').font('Helvetica-Bold')
-          .text('⚠  Registro digital pendente — sincronização em processamento', M, techY + 60);
+        doc.fontSize(7.5).fillColor('#b45309').font('Helvetica-Bold')
+          .text('⚠  Registro digital pendente — sincronização em processamento', 0, techY + 12, { align: 'center', width: W });
       }
 
-      // ── Footer ────────────────────────────────────────────────────
-      doc.rect(0, H - 40, W, 40).fill(DARK);
-      doc.fontSize(8).fillColor(GREEN).font('Helvetica')
-        .text('selva.eco.br', M, H - 27)
-        .text('@selva.eco', W / 2 - 30, H - 27, { width: 80, align: 'center' })
-        .text('+55 92 9 9264 3800', W - M - 110, H - 27, { width: 110, align: 'right' });
+      // ── Footer ──────────────────────────────────────────────────────
+      const FY = H - FOOTER_H;
+      doc.rect(0, FY, W, FOOTER_H).fill(FOOTER_BG);
 
-      doc.fontSize(7).fillColor('rgba(255,255,255,0.4)').font('Helvetica')
-        .text(`Emitido em ${new Date().toLocaleDateString('pt-BR')}`, 0, H - 16, { align: 'center', width: W });
+      const fy2 = FY + 16;
+      doc.fontSize(8.5).fillColor(GREEN).font('Helvetica')
+        .text('selva.eco.br', M, fy2);
+      doc.fontSize(8.5).fillColor(GREEN).font('Helvetica')
+        .text('selva.eco', 0, fy2, { align: 'center', width: W });
+      doc.fontSize(8.5).fillColor(GREEN).font('Helvetica')
+        .text('+55 (92) 98468-1214', 0, fy2, { align: 'right', width: W - M });
+
+      doc.fontSize(7).fillColor('rgba(255,255,255,0.35)').font('Helvetica')
+        .text(`Emitido em ${new Date().toLocaleDateString('pt-BR')}`, 0, FY + 34, { align: 'center', width: W });
 
       doc.end();
     });
+  }
+
+  private drawTextLogo(doc: any, W: number, y: number) {
+    // Fallback: draw text-only logo centered
+    doc.fontSize(20).fillColor(DARK).font('Helvetica-Bold')
+      .text('SELVA', 0, y + 16, { align: 'center', width: W });
+    doc.fontSize(7.5).fillColor(MUTED).font('Helvetica')
+      .text('AMAZONIC BLOCKCHAIN ECOSYSTEM', 0, y + 40, { align: 'center', width: W });
+  }
+
+  private drawWatermark(doc: any, W: number, bodyY: number, bodyH: number) {
+    doc.save();
+    doc.opacity(0.035);
+
+    const cx = W / 2;
+    const cy = bodyY + bodyH * 0.5;
+
+    // Concentric circles
+    for (let r = 50; r <= 230; r += 55) {
+      doc.circle(cx, cy, r).lineWidth(1.5).stroke(DARK);
+    }
+
+    // Offset accent circles
+    doc.circle(cx - 170, cy + 70, 85).lineWidth(1).stroke(DARK);
+    doc.circle(cx + 170, cy - 70, 85).lineWidth(1).stroke(DARK);
+    doc.circle(cx - 80, cy - 150, 50).lineWidth(1).stroke(DARK);
+    doc.circle(cx + 100, cy + 150, 50).lineWidth(1).stroke(DARK);
+
+    // Connecting lines (blockchain nodes)
+    doc.moveTo(cx, cy - 230).lineTo(cx - 170, cy + 70).lineWidth(0.8).stroke(DARK);
+    doc.moveTo(cx, cy - 230).lineTo(cx + 170, cy - 70).lineWidth(0.8).stroke(DARK);
+    doc.moveTo(cx - 170, cy + 70).lineTo(cx + 170, cy - 70).lineWidth(0.8).stroke(DARK);
+
+    doc.restore();
+  }
+
+  private shortAddr(addr?: string): string {
+    if (!addr) return '—';
+    return addr.length > 20 ? addr.slice(0, 10) + '...' + addr.slice(-6) : addr;
   }
 }

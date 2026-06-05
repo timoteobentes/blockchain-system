@@ -127,7 +127,7 @@ export class SyncService {
         documentHash: dto.documentHash,
         active: true,
         syncStatus: hasWallet ? 'PENDING' : 'SYNCED',
-        onChainAt: hasWallet ? new Date() : null,
+        onChainAt: new Date(),
         traces: {
           create: {
             id: traceId,
