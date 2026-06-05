@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi';
 import Link from 'next/link';
-import { ArrowLeft, ArrowRightLeft, AlertCircle, CheckCircle, Wifi, WifiOff, Search, User } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, AlertCircle, CheckCircle, Wifi, WifiOff, Search, User, Building2, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SELVA_ABI, CONTRACT_ADDRESS } from '@/contracts/abi';
 import { api } from '@/lib/api';
@@ -17,13 +17,33 @@ function maskCpf(value: string): string {
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
 }
 
+function maskCnpj(value: string): string {
+  const d = value.replace(/\D/g, '').slice(0, 14);
+  if (d.length <= 2) return d;
+  if (d.length <= 5) return `${d.slice(0, 2)}.${d.slice(2)}`;
+  if (d.length <= 8) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5)}`;
+  if (d.length <= 12) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8)}`;
+  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+}
+
+type DocType = 'cpf' | 'cnpj';
 type LookupState = 'idle' | 'searching' | 'found' | 'not-found' | 'error';
+type RecipientType = 'PESSOA' | 'ASSOCIACAO' | 'COOPERATIVA';
 
 interface Recipient {
-  isProducer: any;
+  isRegistered: boolean;
+  isProducer?: boolean;
   name: string;
-  walletAddress: string;
+  walletAddress?: string;
+  cpfCnpj?: string;
+  recipientType: RecipientType;
 }
+
+const RECIPIENT_TYPES: { value: RecipientType; label: string; icon: any }[] = [
+  { value: 'PESSOA', label: 'Pessoa Física', icon: User },
+  { value: 'ASSOCIACAO', label: 'Associação', icon: Users },
+  { value: 'COOPERATIVA', label: 'Cooperativa', icon: Building2 },
+];
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '10px 14px', borderRadius: 10,
@@ -36,60 +56,117 @@ export default function TransferPage() {
   const { lotId } = useParams<{ lotId: string }>();
   const router = useRouter();
   const { address } = useAccount();
-  const [cpf, setCpf] = useState('');
+
+  const [doc, setDoc] = useState('');
+  const [docType, setDocType] = useState<DocType>('cpf');
   const [lookupState, setLookupState] = useState<LookupState>('idle');
   const [lookupError, setLookupError] = useState('');
+
+  // Manual entry fields (for non-registered or CNPJ)
+  const [manualName, setManualName] = useState('');
+  const [manualType, setManualType] = useState<RecipientType>('PESSOA');
+  const [showManual, setShowManual] = useState(false);
+
   const [recipient, setRecipient] = useState<Recipient | null>(null);
   const [submitError, setSubmitError] = useState('');
   const [offlineMode, setOfflineMode] = useState(false);
   const [offlineResult, setOfflineResult] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   const { writeContractAsync, data: txHash } = useWriteContract();
   const { isLoading: txPending, isSuccess: txSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
   useEffect(() => {
+    api.users.me().then(setCurrentUser).catch(() => {});
     api.sync.status().then(s => {
       setOfflineMode(!s.blockchainEnabled || !CONTRACT_ADDRESS);
     }).catch(() => setOfflineMode(true));
   }, []);
 
-  const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const masked = maskCpf(e.target.value);
-    setCpf(masked);
+  const handleDocChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, '');
+    const isCnpj = raw.length > 11;
+    const newDocType: DocType = isCnpj ? 'cnpj' : 'cpf';
+    const masked = isCnpj ? maskCnpj(e.target.value) : maskCpf(e.target.value);
+
+    setDoc(masked);
+    setDocType(newDocType);
     setRecipient(null);
     setLookupError('');
+    setShowManual(false);
+    setManualName('');
 
-    const digits = masked.replace(/\D/g, '');
-    if (digits.length < 11) {
+    if (isCnpj) {
+      // CNPJ → skip lookup, go to manual entry (org not individually registered)
+      if (raw.length === 14) {
+        setLookupState('not-found');
+        setShowManual(true);
+        setManualType('ASSOCIACAO');
+      } else {
+        setLookupState('idle');
+      }
+      return;
+    }
+
+    // CPF: auto-lookup on 11 digits
+    if (raw.length < 11) {
       setLookupState('idle');
       return;
     }
 
-    // Auto-lookup with debounce when 11 digits entered
     setLookupState('searching');
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
         const result = await api.users.lookupByCpf(masked);
+
         // Prevent transfer to self
-        if (result.walletAddress.toLowerCase() === address?.toLowerCase()) {
+        const isSelf =
+          (result.walletAddress && (
+            result.walletAddress.toLowerCase() === address?.toLowerCase() ||
+            result.walletAddress.toLowerCase() === currentUser?.walletAddress?.toLowerCase()
+          )) ||
+          (currentUser?.privyDid && result.walletAddress === currentUser.privyDid);
+
+        if (isSelf) {
           setLookupState('error');
           setLookupError('Você não pode transferir uma produção para você mesmo.');
           return;
         }
-        setRecipient(result);
+
+        setRecipient({
+          isRegistered: true,
+          isProducer: result.isProducer,
+          name: result.name,
+          walletAddress: result.walletAddress,
+          cpfCnpj: masked,
+          recipientType: 'PESSOA',
+        });
         setLookupState('found');
       } catch (err: any) {
         if (err?.message?.includes('não encontrado') || err?.message?.includes('404')) {
           setLookupState('not-found');
-          setLookupError('Nenhum produtor encontrado com este CPF. Verifique se ele está cadastrado no sistema.');
+          setLookupError('');
+          setShowManual(true);
         } else {
           setLookupState('error');
-          setLookupError(err?.message ?? 'Erro ao buscar produtor. Tente novamente.');
+          setLookupError(err?.message ?? 'Erro ao buscar. Tente novamente.');
         }
       }
     }, 600);
+  };
+
+  const handleManualConfirm = () => {
+    if (!manualName.trim()) return;
+    setRecipient({
+      isRegistered: false,
+      name: manualName.trim(),
+      walletAddress: undefined,
+      cpfCnpj: doc,
+      recipientType: manualType,
+    });
+    setLookupState('found');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -97,12 +174,22 @@ export default function TransferPage() {
     if (!recipient) return;
     setSubmitError('');
 
-    if (offlineMode) {
+    // Non-registered recipients always go through offline transfer
+    const useOffline = offlineMode || !recipient.walletAddress;
+
+    if (useOffline) {
       setOfflineResult('loading');
       try {
         await api.sync.transferOffline({
           lotId: lotId as string,
-          toAddress: recipient.walletAddress,
+          ...(recipient.walletAddress
+            ? { toAddress: recipient.walletAddress }
+            : {
+                toName: recipient.name,
+                toCpfCnpj: recipient.cpfCnpj,
+                toType: recipient.recipientType,
+              }
+          ),
         });
         setOfflineResult('success');
       } catch (err: any) {
@@ -126,6 +213,7 @@ export default function TransferPage() {
 
   const isSuccess = txSuccess || offlineResult === 'success';
   const isBusy = txPending || offlineResult === 'loading';
+  const canSubmit = lookupState === 'found' && !!recipient;
 
   if (isSuccess) {
     return (
@@ -136,8 +224,10 @@ export default function TransferPage() {
         <div style={{ textAlign: 'center' }}>
           <h2 style={{ fontSize: 20, fontWeight: 800, color: '#f0f0ee', margin: 0 }}>Transferência registrada!</h2>
           <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', margin: '8px 0 0' }}>
-            {offlineResult === 'success'
+            {offlineResult === 'success' && recipient?.walletAddress
               ? 'Salvo localmente. Será enviado para o sistema de rastreabilidade quando a conexão voltar.'
+              : offlineResult === 'success' && !recipient?.walletAddress
+              ? 'Transferência registrada no histórico da produção.'
               : 'Responsabilidade transferida com sucesso.'}
           </p>
           {recipient && (
@@ -186,16 +276,17 @@ export default function TransferPage() {
       <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 24 }}>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
+          {/* Document input */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <label style={{ fontSize: 12.5, fontWeight: 600, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              CPF do novo responsável
+              CPF ou CNPJ do destinatário
             </label>
             <div style={{ position: 'relative' }}>
               <input
                 style={{ ...inputStyle, paddingRight: 40 }}
-                placeholder="000.000.000-00"
-                value={cpf}
-                onChange={handleCpfChange}
+                placeholder="CPF (000.000.000-00) ou CNPJ"
+                value={doc}
+                onChange={handleDocChange}
                 inputMode="numeric"
                 autoComplete="off"
               />
@@ -207,12 +298,77 @@ export default function TransferPage() {
               </div>
             </div>
             <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', margin: 0 }}>
-              Digite o CPF cadastrado no sistema SELVA
+              {docType === 'cnpj'
+                ? 'CNPJ detectado — preencha o nome da organização abaixo'
+                : 'Busca automática ao preencher CPF completo'}
             </p>
           </div>
 
-          {/* Lookup result */}
-          {lookupState === 'found' && recipient && (
+          {/* Manual entry section (not found or CNPJ) */}
+          {showManual && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '16px 18px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              {lookupState === 'not-found' && docType === 'cpf' && (
+                <div style={{ display: 'flex', gap: 8, padding: '10px 12px', borderRadius: 9, background: 'rgba(251,191,36,0.07)', border: '1px solid rgba(251,191,36,0.18)' }}>
+                  <AlertCircle size={14} color="#fbbf24" style={{ flexShrink: 0, marginTop: 1 }} />
+                  <span style={{ fontSize: 12.5, color: '#fbbf24' }}>CPF não encontrado no sistema — preencha os dados manualmente para registrar a transferência.</span>
+                </div>
+              )}
+
+              {/* Recipient type */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Tipo de destinatário</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {RECIPIENT_TYPES.map(({ value, label, icon: Icon }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setManualType(value)}
+                      style={{
+                        flex: 1, padding: '8px 4px', borderRadius: 9, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: 'pointer', border: `1px solid ${manualType === value ? 'rgba(195,228,56,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                        background: manualType === value ? 'rgba(195,228,56,0.08)' : 'rgba(255,255,255,0.02)',
+                        color: manualType === value ? '#c3e438' : 'rgba(255,255,255,0.4)',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      <Icon size={15} />
+                      <span style={{ fontSize: 10.5, fontWeight: 600 }}>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Name field */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  {manualType === 'PESSOA' ? 'Nome completo' : 'Nome da organização'}
+                </label>
+                <input
+                  style={inputStyle}
+                  placeholder={manualType === 'PESSOA' ? 'Nome completo do destinatário' : 'Razão social ou nome fantasia'}
+                  value={manualName}
+                  onChange={e => { setManualName(e.target.value); setRecipient(null); if (lookupState === 'found') setLookupState('not-found'); }}
+                  autoComplete="off"
+                />
+              </div>
+
+              {/* Confirm manual button */}
+              {lookupState !== 'found' && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!manualName.trim()}
+                  onClick={handleManualConfirm}
+                  style={{ cursor: manualName.trim() ? 'pointer' : 'not-allowed', alignSelf: 'flex-start' }}
+                >
+                  Confirmar destinatário
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Found registered user */}
+          {lookupState === 'found' && recipient?.isRegistered && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 12, background: 'rgba(195,228,56,0.07)', border: '1px solid rgba(195,228,56,0.25)' }}>
               <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(195,228,56,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <User size={18} color="#c3e438" />
@@ -226,7 +382,24 @@ export default function TransferPage() {
             </div>
           )}
 
-          {(lookupState === 'not-found' || lookupState === 'error') && lookupError && (
+          {/* Found external recipient */}
+          {lookupState === 'found' && recipient && !recipient.isRegistered && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 12, background: 'rgba(96,165,250,0.07)', border: '1px solid rgba(96,165,250,0.2)' }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(96,165,250,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {recipient.recipientType === 'PESSOA' ? <User size={18} color="#60a5fa" /> : recipient.recipientType === 'ASSOCIACAO' ? <Users size={18} color="#60a5fa" /> : <Building2 size={18} color="#60a5fa" />}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: '#60a5fa', margin: '0 0 2px' }}>{recipient.name}</p>
+                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', margin: 0 }}>
+                  {RECIPIENT_TYPES.find(t => t.value === recipient.recipientType)?.label} · não cadastrado na plataforma
+                </p>
+              </div>
+              <button type="button" onClick={() => { setLookupState('not-found'); setRecipient(null); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 12 }}>editar</button>
+            </div>
+          )}
+
+          {/* Error state */}
+          {lookupState === 'error' && lookupError && (
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
               <AlertCircle size={15} color="#f87171" style={{ flexShrink: 0, marginTop: 1 }} />
               <span style={{ fontSize: 13, color: '#f87171' }}>{lookupError}</span>
@@ -251,11 +424,11 @@ export default function TransferPage() {
             type="submit"
             size="lg"
             loading={isBusy}
-            disabled={lookupState !== 'found' || !recipient}
-            style={{ width: '100%', marginTop: 4, cursor: lookupState === 'found' ? 'pointer' : 'not-allowed' }}
+            disabled={!canSubmit}
+            style={{ width: '100%', marginTop: 4, cursor: canSubmit ? 'pointer' : 'not-allowed' }}
           >
             <ArrowRightLeft size={15} />
-            {offlineMode ? 'Salvar transferência' : 'Confirmar transferência'}
+            {offlineMode || !recipient?.walletAddress ? 'Registrar transferência' : 'Confirmar transferência'}
           </Button>
         </form>
       </div>

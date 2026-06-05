@@ -35,8 +35,15 @@ export class CertificateService {
     this.appUrl = config.get<string>('APP_URL', 'http://localhost:3000');
 
     const candidates = [
+      // Dev: src/assets/ (via process.cwd())
       path.join(process.cwd(), 'src', 'assets', 'logo-selva.png'),
-      path.join(__dirname, '..', 'assets', 'logo-selva.png'),
+      // Prod: dist/assets/ (copied by nest-cli assets config)
+      // __dirname = dist/modules/certificate → ../../ = dist/
+      path.join(__dirname, '..', '..', 'assets', 'logo-selva.png'),
+      // Prod fallback: dist/assets/ via process.cwd()
+      path.join(process.cwd(), 'dist', 'assets', 'logo-selva.png'),
+      // Absolute fallback from monorepo root
+      path.join(process.cwd(), 'apps', 'api', 'src', 'assets', 'logo-selva.png'),
     ];
     this.logoPath = candidates.find(p => fs.existsSync(p)) ?? '';
   }

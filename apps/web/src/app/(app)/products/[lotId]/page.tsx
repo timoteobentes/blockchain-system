@@ -44,9 +44,14 @@ export default function ProductDetailPage() {
   const { address } = useAccount();
   const [product, setProduct] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [certLoading, setCertLoading] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
+
+  useEffect(() => {
+    api.users.me().then(setCurrentUser).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!lotId) return;
@@ -56,7 +61,12 @@ export default function ProductDetailPage() {
       .finally(() => setLoading(false));
   }, [lotId]);
 
-  const isOwner = address && product && address.toLowerCase() === product.currentOwnerAddress?.toLowerCase();
+  const ownerAddr = product?.currentOwnerAddress?.toLowerCase();
+  const isOwner = product && (
+    (currentUser?.walletAddress && currentUser.walletAddress.toLowerCase() === ownerAddr) ||
+    (currentUser?.privyDid && currentUser.privyDid === product.currentOwnerAddress) ||
+    (address && address.toLowerCase() === ownerAddr)
+  );
 
   if (loading) {
     return (

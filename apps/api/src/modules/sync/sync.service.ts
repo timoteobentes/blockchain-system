@@ -175,6 +175,10 @@ export class SyncService {
   }
 
   async transferOffline(dto: TransferOfflineDto, jwtUser: JwtPayload) {
+    if (!dto.toAddress && !dto.toName) {
+      throw new BadRequestException('Informe o destinatário: endereço de carteira ou nome completo');
+    }
+
     // Identifica o remetente pelo JWT (nunca pelo corpo da requisição)
     const callerUser = await this.prisma.user.findFirst({
       where: {
@@ -198,15 +202,55 @@ export class SyncService {
       throw new BadRequestException('Você não é o responsável atual por esta produção');
     }
 
-    const toAddr = dto.toAddress.toLowerCase();
-    const toUser = await this.prisma.user.findUnique({
-      where: { walletAddress: toAddr },
-      select: { name: true },
-    });
-    const toName = toUser?.name ?? '';
-
     const traceId = `${dto.lotId}-TRANSFERRED-offline-${Date.now()}`;
+    let toAddr: string;
+    let toName: string;
+    let isExternalTransfer = false;
 
+    if (dto.toAddress) {
+      // Destinatário cadastrado na plataforma (com carteira)
+      toAddr = dto.toAddress.toLowerCase();
+      const toUser = await this.prisma.user.findUnique({
+        where: { walletAddress: toAddr },
+        select: { name: true },
+      });
+      toName = toUser?.name ?? dto.toName ?? '';
+    } else {
+      // Destinatário externo (não cadastrado na plataforma)
+      isExternalTransfer = true;
+      const docDigits = (dto.toCpfCnpj ?? '').replace(/\D/g, '');
+      const docKey = docDigits || dto.toName!.replace(/\s/g, '').toLowerCase();
+      toAddr = 'ext:' + ethers.keccak256(ethers.toUtf8Bytes(`selva:ext:${docKey}`)).slice(2, 42);
+      toName = dto.toName!;
+    }
+
+    if (isExternalTransfer) {
+      // Transferência para externo: apenas registra no banco, sem operação blockchain pendente
+      await this.prisma.product.update({
+        where: { lotId: dto.lotId },
+        data: {
+          currentOwnerAddress: toAddr,
+          currentOwnerName: toName,
+          // Mantém o syncStatus atual (produto pode já estar SYNCED no blockchain)
+          traces: {
+            create: {
+              id: traceId,
+              actor: fromAddr,
+              action: 'TRANSFERRED',
+              docHash: product.documentHash,
+              fromAddress: fromAddr,
+              toAddress: toAddr,
+              fromName,
+              toName,
+              blockTimestamp: new Date(),
+            },
+          },
+        },
+      });
+      return { lotId: dto.lotId, pendingOpId: null, syncStatus: product.syncStatus, external: true };
+    }
+
+    // Transferência para usuário com carteira: cria operação pendente para blockchain
     const [, op] = await this.prisma.$transaction([
       this.prisma.product.update({
         where: { lotId: dto.lotId },

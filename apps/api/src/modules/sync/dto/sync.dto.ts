@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsOptional, Min, ValidateIf } from 'class-validator';
 
 export class RegisterUserOfflineDto {
   @IsString() @IsNotEmpty() name: string;
@@ -18,7 +18,18 @@ export class AddProductOfflineDto {
 
 export class TransferOfflineDto {
   @IsString() @IsNotEmpty() lotId: string;
-  @IsString() @IsNotEmpty() toAddress: string;
+
+  // Para usuários cadastrados com carteira
+  @IsString() @IsOptional() toAddress?: string;
+
+  // Para destinatários externos (não cadastrados na plataforma)
+  @ValidateIf(o => !o.toAddress)
+  @IsString() @IsNotEmpty() toName?: string;
+
+  @IsString() @IsOptional() toCpfCnpj?: string;
+
+  // PESSOA | ASSOCIACAO | COOPERATIVA
+  @IsString() @IsOptional() toType?: string;
 }
 
 export class ConfirmSyncDto {

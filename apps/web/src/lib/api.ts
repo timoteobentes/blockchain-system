@@ -105,7 +105,13 @@ export const api = {
       request<any>('/api/sync/register', { method: 'POST', body: JSON.stringify(data) }),
     addProductOffline: (data: { lotId: string; volume: number; origin: string; documentHash: string; originType?: string; productName?: string; unit?: string; pricePerUnit?: number }) =>
       request<any>('/api/sync/product', { method: 'POST', body: JSON.stringify(data) }),
-    transferOffline: (data: { lotId: string; toAddress: string }) =>
+    transferOffline: (data: {
+      lotId: string;
+      toAddress?: string;
+      toName?: string;
+      toCpfCnpj?: string;
+      toType?: string;
+    }) =>
       request<any>('/api/sync/transfer', { method: 'POST', body: JSON.stringify(data) }),
     confirm: (opId: string, txHash: string) =>
       request<any>(`/api/sync/confirm/${opId}`, { method: 'PATCH', body: JSON.stringify({ txHash }) }),
