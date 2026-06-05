@@ -182,16 +182,6 @@ export default function DashboardPage() {
 
         {/* Quick actions */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {isProducer && (
-            <div style={{ background: 'rgba(195,228,56,0.06)', border: '1px solid rgba(195,228,56,0.15)', borderRadius: 14, padding: '20px 22px' }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: '#c3e438', margin: '0 0 6px' }}>Cadastro rápido</p>
-              <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', margin: '0 0 16px', lineHeight: 1.5 }}>Registre uma nova produção com código gerado automaticamente.</p>
-              <Button asChild className="w-full" style={{ padding: "6px 12px" }}>
-                <Link href="/products/new"><Plus size={14} /> Cadastrar nova produção</Link>
-              </Button>
-            </div>
-          )}
-
           <Link href="/rede" style={{ textDecoration: 'none' }}>
             <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer' }} className="dash-row">
               <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(195,228,56,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>

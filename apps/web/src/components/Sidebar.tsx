@@ -2,7 +2,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Package, Plus, Users, LogOut, Globe, UserCircle } from 'lucide-react';
+import { LayoutDashboard, Package, Plus, Users, LogOut, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -25,7 +25,6 @@ const NETWORK: NavItem[] = [
 ];
 
 const ACCOUNT: NavItem[] = [
-  { href: '/profile', label: 'Meu perfil', icon: UserCircle },
   { href: '/admin/users', label: 'Usuários', icon: Users, adminOnly: true },
 ];
 
@@ -101,8 +100,12 @@ export function Sidebar({ onClose }: SidebarProps) {
           <NavSection title="Meu Painel" items={MY_PANEL} user={user} pathname={pathname} onClose={onClose} />
           <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '6px 10px' }} />
           <NavSection title="Rede SELVA" items={NETWORK} user={user} pathname={pathname} onClose={onClose} />
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '6px 10px' }} />
-          <NavSection title="Conta" items={ACCOUNT} user={user} pathname={pathname} onClose={onClose} />
+          {user?.isAdmin && (
+            <>
+              <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '6px 10px' }} />
+              <NavSection title="Administração" items={ACCOUNT} user={user} pathname={pathname} onClose={onClose} />
+            </>
+          )}
         </nav>
 
         {/* User + Logout */}
