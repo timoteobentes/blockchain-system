@@ -9,12 +9,21 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
 
+  const envOrigins = [
+    process.env.FRONTEND_URL,
+    process.env.CORS_ORIGIN,
+  ]
+    .filter(Boolean)
+    .flatMap(origin => origin!.split(','))
+    .map(origin => origin.trim())
+    .filter(Boolean);
+
   const allowedOrigins = [
     'https://blockchain.selva.eco.br',
-    process.env.FRONTEND_URL,
     'http://localhost:3000',
     'http://localhost:3001',
-  ].filter(Boolean) as string[];
+    ...envOrigins,
+  ];
 
   app.enableCors({
     origin: (origin, callback) => {
